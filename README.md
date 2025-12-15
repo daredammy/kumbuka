@@ -27,28 +27,73 @@ Ctrl+C                    # Stop when done
 
 ## Requirements
 
-- macOS (Apple Silicon recommended)
+- macOS (Apple Silicon recommended) or Linux
 - [uv](https://github.com/astral-sh/uv) - Python package manager
-- [Claude Code](https://claude.ai/code) - CLI access to Claude
-- Local Whisper server (we recommend [VoiceMode](https://github.com/nicobrenner/voicemode))
+- [Claude Code](https://docs.anthropic.com/en/docs/claude-code) - CLI access to Claude
+- Local Whisper server
 - Notion account (optional, for auto-saving)
 
 ## Installation
 
+### 1. Install uv (Python package manager)
+
 ```bash
-# Install uv if you haven't
 curl -LsSf https://astral.sh/uv/install.sh | sh
+```
 
-# Install Claude Code
+### 2. Install Claude Code
+
+```bash
 npm install -g @anthropic-ai/claude-code
+claude  # Follow auth prompts
+```
 
-# Download kumbuka
+### 3. Set up local Whisper
+
+The easiest way is using [VoiceMode](https://github.com/nicobrenner/voicemode):
+
+```bash
+# Install VoiceMode
+uv tool install voicemode
+
+# Download Whisper model and start server
+voicemode start-service whisper
+```
+
+This starts Whisper on `http://127.0.0.1:2022`. To auto-start on boot:
+
+```bash
+# macOS - creates LaunchAgent
+voicemode enable-service whisper
+```
+
+**Alternative**: Run whisper.cpp directly - see [whisper.cpp server docs](https://github.com/ggerganov/whisper.cpp/tree/master/examples/server).
+
+### 4. Set up Notion (optional)
+
+Add Notion MCP to Claude Code:
+
+```bash
+claude mcp add --scope user --transport http Notion https://mcp.notion.com/mcp
+```
+
+Then authenticate when prompted.
+
+### 5. Install kumbuka
+
+```bash
+# Download
 curl -o ~/.local/bin/kumbuka https://raw.githubusercontent.com/hypebridge/kumbuka/main/kumbuka
 chmod +x ~/.local/bin/kumbuka
 
-# Start Whisper (if using VoiceMode)
-voicemode start-service whisper
+# Set your Notion database URL
+export KUMBUKA_NOTION_URL="https://www.notion.so/YOUR-DATABASE-URL"
+
+# Add to your shell profile (~/.zshrc or ~/.bashrc)
+echo 'export KUMBUKA_NOTION_URL="https://www.notion.so/YOUR-DATABASE-URL"' >> ~/.zshrc
 ```
+
+To find your Notion database URL: Open your Meetings database → Click `...` → Copy link.
 
 ## Usage
 
@@ -57,16 +102,40 @@ kumbuka
 # That's it. Ctrl+C to stop.
 ```
 
+### Configuration
+
+Set via environment variables:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `KUMBUKA_NOTION_URL` | (required) | Your Notion database URL |
+| `KUMBUKA_WHISPER_URL` | `http://127.0.0.1:2022/v1/audio/transcriptions` | Whisper API endpoint |
+| `KUMBUKA_MAX_DURATION` | `7200` | Max recording time in seconds |
+
+Or edit the script directly.
+
 ## Output
 
 Audio and transcripts are backed up to `/tmp/kumbuka/` with automatic cleanup on reboot.
 
-## Configuration
+Example Notion page created:
 
-Edit the script to customize:
-- `WHISPER_URL` - your Whisper endpoint (default: `http://127.0.0.1:2022`)
-- `MAX_DURATION` - max recording time (default: 2 hours)
-- Notion database URL - where pages are created
+**Title:** "Q1 Roadmap Planning - API Priorities"
+
+**Participants:**
+- Dami (Engineering Lead)
+- Sarah (Product)
+- Mike (Design)
+
+**Summary:**
+- Overview of Q1 priorities...
+- **Decisions:** Ship API v1 by January
+- **Action Items:**
+  - [ ] Dami: Draft API spec by Friday
+  - [ ] Sarah: Update roadmap
+
+**Transcript:**
+> **Dami:** Let's start with the API discussion...
 
 ## Comparison
 
@@ -80,12 +149,35 @@ Edit the script to customize:
 
 *Requires Claude API for summaries
 
+## Troubleshooting
+
+**"Whisper not running"**
+```bash
+voicemode start-service whisper
+# Or check: curl http://127.0.0.1:2022/health
+```
+
+**"Claude CLI not found"**
+```bash
+npm install -g @anthropic-ai/claude-code
+# Make sure ~/.npm-global/bin is in your PATH
+```
+
+**"Notion database URL not set"**
+```bash
+export KUMBUKA_NOTION_URL="https://www.notion.so/your-database-url"
+```
+
+**No audio recorded**
+- Check microphone permissions in System Settings → Privacy & Security → Microphone
+- Test with: `python -c "import sounddevice; print(sounddevice.query_devices())"`
+
 ## Tech stack
 
 - **Recording**: sounddevice + numpy
 - **Transcription**: Whisper.cpp (local)
 - **AI Processing**: Claude via Claude Code
-- **Storage**: Notion API (optional)
+- **Storage**: Notion API via MCP
 
 ## Why "Kumbuka"?
 

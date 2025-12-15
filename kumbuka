@@ -3,12 +3,17 @@
 # requires-python = ">=3.10"
 # dependencies = ["numpy", "sounddevice", "httpx"]
 # ///
-"""Record a meeting, transcribe with Whisper, send to Claude for summary + Notion."""
+"""
+Kumbuka - Local-first meeting recorder with AI-powered transcription.
+https://github.com/hypebridge/kumbuka
+"""
 
 import io
 import json
+import os
 import signal
 import sys
+import shutil
 import subprocess
 import wave
 from datetime import datetime
@@ -18,26 +23,38 @@ import httpx
 import numpy as np
 import sounddevice as sd
 
-# Config
-WHISPER_URL = "http://127.0.0.1:2022/v1/audio/transcriptions"
+# =============================================================================
+# CONFIGURATION - Edit these or set via environment variables
+# =============================================================================
+
+# Whisper server URL (default: VoiceMode's whisper server)
+WHISPER_URL = os.getenv("KUMBUKA_WHISPER_URL", "http://127.0.0.1:2022/v1/audio/transcriptions")
+
+# Notion database URL - SET THIS TO YOUR OWN MEETINGS DATABASE
+# To find it: Open your Notion database, click "..." > "Copy link"
+NOTION_DB_URL = os.getenv("KUMBUKA_NOTION_URL", "")
+
+# Max recording duration in seconds (default: 2 hours)
+MAX_DURATION = int(os.getenv("KUMBUKA_MAX_DURATION", "7200"))
+
+# =============================================================================
+
 SAMPLE_RATE = 16000
 CHANNELS = 1
 TEMP_DIR = Path("/tmp/kumbuka")
-MAX_DURATION = 7200  # 2 hours
 
-# State
 recording = True
 chunks = []
 
 
 def tone(freq=880, dur=0.15, vol=0.3):
     t = np.linspace(0, dur, int(SAMPLE_RATE * dur), False)
-    wave = np.sin(freq * 2 * np.pi * t) * vol
-    env = np.ones_like(wave)
+    w = np.sin(freq * 2 * np.pi * t) * vol
+    env = np.ones_like(w)
     fade = int(SAMPLE_RATE * 0.01)
     env[:fade] = np.linspace(0, 1, fade)
     env[-fade:] = np.linspace(1, 0, fade)
-    sd.play((wave * env * 32767).astype(np.int16), SAMPLE_RATE)
+    sd.play((w * env * 32767).astype(np.int16), SAMPLE_RATE)
     sd.wait()
 
 
@@ -56,7 +73,53 @@ def on_signal(sig, frame):
     recording = False
 
 
-def record():
+def find_claude():
+    """Find claude CLI in PATH or common locations."""
+    # Check PATH first
+    claude = shutil.which("claude")
+    if claude:
+        return claude
+    
+    # Check common locations
+    locations = [
+        Path.home() / ".npm-global/bin/claude",
+        Path.home() / ".local/bin/claude",
+        Path("/usr/local/bin/claude"),
+    ]
+    for loc in locations:
+        if loc.exists():
+            return str(loc)
+    
+    return None
+
+
+def check_requirements():
+    """Check that all requirements are met."""
+    errors = []
+    
+    # Check Whisper
+    try:
+        resp = httpx.get(WHISPER_URL.replace("/v1/audio/transcriptions", "/health"), timeout=2)
+    except:
+        errors.append(f"❌ Whisper not running at {WHISPER_URL}\n   Start it with: voicemode start-service whisper")
+    
+    # Check Claude
+    if not find_claude():
+        errors.append("❌ Claude CLI not found\n   Install with: npm install -g @anthropic-ai/claude-code")
+    
+    # Check Notion URL
+    if not NOTION_DB_URL:
+        errors.append("❌ Notion database URL not set\n   Set KUMBUKA_NOTION_URL environment variable or edit the script")
+    
+    if errors:
+        print("\n⚠️  Setup incomplete:\n")
+        for e in errors:
+            print(f"   {e}\n")
+        print("See README.md for setup instructions.")
+        sys.exit(1)
+
+
+def record_audio():
     global recording, chunks
     TEMP_DIR.mkdir(parents=True, exist_ok=True)
     session = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
@@ -161,17 +224,19 @@ def send_to_claude(transcript: str, duration: str, timestamp: str):
 4. **CLEANED TRANSCRIPT**: Fix grammar, remove filler words (um, uh, like), format into readable paragraphs. Attribute statements to speakers where possible (e.g., "**Sarah:** We should prioritize the API work first.").
 
 5. **CREATE NOTION PAGE** in the Meetings database:
-   https://www.notion.so/Meetings-2caadf3d26ca80089ec3f241c6262dd4
+   {NOTION_DB_URL}
    
    Use the generated title as the page title. Include participants, summary, then the cleaned transcript.
 '''
     
-    claude_path = Path.home() / ".npm-global/bin/claude"
-    subprocess.run([str(claude_path), "-p", prompt])
+    claude = find_claude()
+    subprocess.run([claude, "-p", prompt])
 
 
 def main():
-    wav, session = record()
+    check_requirements()
+    
+    wav, session = record_audio()
     if not wav:
         sys.exit(1)
     
