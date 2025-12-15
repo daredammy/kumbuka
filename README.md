@@ -90,6 +90,44 @@ kumbuka
 # That's it. Ctrl+C to stop.
 ```
 
+## Auto-Record Calendar Meetings (macOS)
+
+Kumbuka can watch your calendar and prompt you when meetings are about to start:
+
+```bash
+# Enable calendar monitoring
+kumbuka monitor enable
+
+# Disable
+kumbuka monitor disable
+
+# Check status
+kumbuka monitor status
+```
+
+When a meeting is about to start (2 minutes before), you'll see a dialog:
+
+> **Meeting starting soon:**
+> Weekly Standup
+> 
+> Would you like to record?
+> [Skip] [Record]
+
+**Configuration:**
+
+```bash
+# Which calendars to watch (comma-separated, or empty for all)
+export KUMBUKA_CALENDARS="work@company.com,personal@gmail.com"
+
+# How many minutes before to prompt (default: 2)
+export KUMBUKA_PROMPT_MINUTES="5"
+
+# Re-enable to apply changes
+kumbuka monitor enable
+```
+
+**Note:** Uses macOS Calendar.app (syncs with Google Calendar, Outlook, etc.)
+
 ## Configuration
 
 | Environment Variable | Default | Description |
@@ -97,6 +135,8 @@ kumbuka
 | `KUMBUKA_NOTION_URL` | (required) | Your Notion database URL |
 | `KUMBUKA_WHISPER_URL` | `http://127.0.0.1:2022/v1/audio/transcriptions` | Whisper endpoint |
 | `KUMBUKA_MAX_DURATION` | `7200` | Max recording time (seconds) |
+| `KUMBUKA_CALENDARS` | (all) | Calendars to monitor (comma-separated) |
+| `KUMBUKA_PROMPT_MINUTES` | `2` | Minutes before meeting to prompt |
 
 ## Project Structure
 
@@ -108,8 +148,10 @@ kumbuka/
 │   ├── recorder.py         # Audio recording
 │   ├── transcriber.py      # Whisper integration  
 │   ├── processor.py        # Claude integration
-│   └── prompts/
-│       └── meeting.txt     # ← The prompt (easy to customize!)
+│   ├── prompts/
+│   │   └── meeting.txt     # ← The prompt (easy to customize!)
+│   └── daemon/
+│       └── monitor.py      # Calendar monitoring
 ├── pyproject.toml
 ├── README.md
 ├── CONTRIBUTING.md

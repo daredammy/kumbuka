@@ -1,12 +1,20 @@
 """Kumbuka CLI entry point."""
 
 import sys
+import subprocess
+import shutil
 from datetime import datetime
+from pathlib import Path
 
-from .config import WHISPER_URL, NOTION_URL, SAMPLE_RATE
+from .config import WHISPER_URL, NOTION_URL, SAMPLE_RATE, PACKAGE_DIR
 from .recorder import record
 from .transcriber import transcribe, check_whisper
 from .processor import process_with_claude, find_claude
+
+
+PLIST_NAME = "com.kumbuka.monitor.plist"
+PLIST_SRC = PACKAGE_DIR / "daemon" / PLIST_NAME
+PLIST_DST = Path.home() / "Library/LaunchAgents" / PLIST_NAME
 
 
 def check_requirements() -> bool:
@@ -41,8 +49,8 @@ def check_requirements() -> bool:
     return True
 
 
-def main():
-    """Main entry point."""
+def do_record():
+    """Main recording flow."""
     if not check_requirements():
         sys.exit(1)
     
@@ -68,6 +76,127 @@ def main():
     )
     
     print("\n✅ Done!")
+
+
+def find_python() -> str:
+    """Find python that has kumbuka installed."""
+    # Try uv's tool python first
+    uv_python = Path.home() / ".local/share/uv/tools/kumbuka/bin/python"
+    if uv_python.exists():
+        return str(uv_python)
+    
+    # Fall back to which python
+    python = shutil.which("python3") or shutil.which("python")
+    return python or "/usr/bin/python3"
+
+
+def monitor_enable():
+    """Enable calendar monitoring daemon."""
+    import os
+    
+    # Create plist with correct paths and env vars
+    python_path = find_python()
+    calendars = os.getenv("KUMBUKA_CALENDARS", "")
+    prompt_minutes = os.getenv("KUMBUKA_PROMPT_MINUTES", "2")
+    
+    plist_content = PLIST_SRC.read_text()
+    plist_content = plist_content.replace("__PYTHON_PATH__", python_path)
+    plist_content = plist_content.replace("__CALENDARS__", calendars)
+    plist_content = plist_content.replace("__PROMPT_MINUTES__", prompt_minutes)
+    
+    PLIST_DST.parent.mkdir(parents=True, exist_ok=True)
+    PLIST_DST.write_text(plist_content)
+    
+    # Load the agent
+    subprocess.run(["launchctl", "unload", str(PLIST_DST)], capture_output=True)
+    result = subprocess.run(["launchctl", "load", str(PLIST_DST)], capture_output=True)
+    
+    if result.returncode == 0:
+        print("✅ Calendar monitor enabled")
+        if calendars:
+            print(f"   Watching: {calendars}")
+        else:
+            print("   Watching: all calendars")
+        print(f"   Prompt: {prompt_minutes} minutes before meetings")
+        print(f"   Logs: /tmp/kumbuka/monitor.log")
+    else:
+        print(f"❌ Failed to enable monitor: {result.stderr.decode()}")
+        sys.exit(1)
+
+
+def monitor_disable():
+    """Disable calendar monitoring daemon."""
+    if PLIST_DST.exists():
+        subprocess.run(["launchctl", "unload", str(PLIST_DST)], capture_output=True)
+        PLIST_DST.unlink()
+        print("✅ Calendar monitor disabled")
+    else:
+        print("ℹ️  Monitor was not enabled")
+
+
+def monitor_status():
+    """Check if monitor is running."""
+    result = subprocess.run(
+        ["launchctl", "list"],
+        capture_output=True,
+        text=True
+    )
+    
+    if "com.kumbuka.monitor" in result.stdout:
+        print("✅ Calendar monitor is running")
+        # Try to get last check time from log
+        log = Path("/tmp/kumbuka/monitor.log")
+        if log.exists():
+            print(f"   Log: {log}")
+    else:
+        print("❌ Calendar monitor is not running")
+        print("   Enable with: kumbuka monitor enable")
+
+
+def print_usage():
+    """Print usage information."""
+    print("""
+Kumbuka - Local-first meeting recorder
+
+Usage:
+  kumbuka                     Start recording (Ctrl+C to stop)
+  kumbuka monitor enable      Auto-prompt when calendar meetings start
+  kumbuka monitor disable     Turn off auto-prompts
+  kumbuka monitor status      Check if monitor is running
+  kumbuka help                Show this message
+""")
+
+
+def main():
+    """Main entry point."""
+    args = sys.argv[1:]
+    
+    if args and (args[0] == "help" or args[0] == "--help" or args[0] == "-h"):
+        print_usage()
+        return
+    
+    if not args:
+        # Default: record
+        do_record()
+    elif args[0] == "monitor":
+        if len(args) < 2:
+            print("Usage: kumbuka monitor [enable|disable|status]")
+            sys.exit(1)
+        
+        cmd = args[1]
+        if cmd == "enable":
+            monitor_enable()
+        elif cmd == "disable":
+            monitor_disable()
+        elif cmd == "status":
+            monitor_status()
+        else:
+            print(f"Unknown monitor command: {cmd}")
+            sys.exit(1)
+    else:
+        print(f"Unknown command: {args[0]}")
+        print_usage()
+        sys.exit(1)
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
 [project]
 name = "kumbuka"
-version = "0.1.0"
+version = "0.3.0"
 description = "Local-first meeting recorder with AI-powered transcription"
 readme = "README.md"
 license = {text = "MIT"}

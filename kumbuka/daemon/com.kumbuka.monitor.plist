@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.kumbuka.monitor</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>__PYTHON_PATH__</string>
+        <string>-m</string>
+        <string>kumbuka.daemon.monitor</string>
+    </array>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>KUMBUKA_CALENDARS</key>
+        <string>__CALENDARS__</string>
+        <key>KUMBUKA_PROMPT_MINUTES</key>
+        <string>__PROMPT_MINUTES__</string>
+    </dict>
+    <key>StartInterval</key>
+    <integer>60</integer>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>/tmp/kumbuka/monitor.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/kumbuka/monitor.err</string>
+</dict>
+</plist>
