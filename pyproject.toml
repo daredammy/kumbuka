@@ -1,0 +1,44 @@
+[project]
+name = "kumbuka"
+version = "0.1.0"
+description = "Local-first meeting recorder with AI-powered transcription"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [
+    {name = "HypeBridge", email = "hello@hypebridge.com"}
+]
+keywords = ["meeting", "transcription", "whisper", "claude", "ai", "notion"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Multimedia :: Sound/Audio :: Speech",
+]
+dependencies = [
+    "numpy>=1.24.0",
+    "sounddevice>=0.4.6",
+    "httpx>=0.24.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/hypebridge/kumbuka"
+Repository = "https://github.com/hypebridge/kumbuka"
+Issues = "https://github.com/hypebridge/kumbuka/issues"
+
+[project.scripts]
+kumbuka = "kumbuka.__main__:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["kumbuka"]
