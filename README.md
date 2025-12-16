@@ -1,29 +1,13 @@
 # Kumbuka
 
-> *Swahili: "to remember"*
+macOS meeting recorder that transcribes locally with Whisper and generates notes with Claude.
 
-**macOS-only** local-first meeting recorder with AI-powered transcription and smart summaries. Records audio, transcribes with Whisper, and uses Claude to generate intelligent meeting notes.
+## Features
 
-**Zero subscription fees. Your data stays local.**
-
-## How it works
-
-```
-kumbuka                   # Start recording
-                          # 🔴 See live progress
-Ctrl+C                    # Stop when done
-                          # → Transcribes locally (Whisper)
-                          # → Claude generates title, identifies participants
-                          # → Creates structured Notion page
-```
-
-## What you get
-
-- **Auto-generated title** based on content (not "Meeting - Dec 15")
-- **Participant identification** with roles inferred from context
-- **Smart summary** adapted to your meeting type
-- **Decisions & Action Items** extracted automatically
-- **Cleaned transcript** with speaker attribution
+- Auto-generated titles and participant identification
+- Summary, decisions, and action items extraction
+- Speaker-attributed transcript
+- Optional Notion export
 
 ## Requirements
 
@@ -31,7 +15,7 @@ Ctrl+C                    # Stop when done
 - Python 3.10+
 - [uv](https://github.com/astral-sh/uv) - Python package manager
 - [Claude Code](https://docs.anthropic.com/en/docs/claude-code) - CLI access to Claude
-- Local Whisper server
+- Local Whisper server (e.g., [VoiceMode](https://github.com/mbailey/voicemode))
 - Notion account (optional, for auto-saving)
 
 ## macOS Permissions
@@ -86,7 +70,7 @@ claude mcp add --scope user --transport http Notion https://mcp.notion.com/mcp
 
 ```bash
 # Install from GitHub
-uv tool install git+https://github.com/hypebridge/kumbuka
+uv tool install git+https://github.com/daredammy/kumbuka
 
 # Set your Notion database URL
 export KUMBUKA_NOTION_URL="https://www.notion.so/YOUR-DATABASE-URL"
@@ -187,17 +171,7 @@ kumbuka/
 └── LICENSE
 ```
 
-**Want to customize how meetings are processed?** Edit `kumbuka/prompts/meeting.txt` - it's just a text file with placeholders.
-
-## Comparison
-
-| Feature | Kumbuka | Otter.ai | Fireflies |
-|---------|---------|----------|-----------|
-| Cost | Free | $16/mo | $19/mo |
-| Data location | 100% local | Cloud | Cloud |
-| Transcription | Local Whisper | Cloud | Cloud |
-| Customizable | Fully | No | No |
-| Open source | ✅ | No | No |
+To customize meeting processing, edit `kumbuka/prompts/meeting.txt`.
 
 ## Troubleshooting
 
@@ -232,20 +206,8 @@ npm install -g @anthropic-ai/claude-code
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for how to:
-- Improve the prompt
-- Add new output formats
-- Support other LLMs
-- Add integrations
-
-## Why "Kumbuka"?
-
-Kumbuka (koom-BOO-kah) is Swahili for "to remember."
+See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
 MIT
-
-## Built by
-
-[HypeBridge](https://hypebridge.com) - AI-powered influencer discovery
