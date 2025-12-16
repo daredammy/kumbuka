@@ -78,21 +78,18 @@ def record() -> tuple[bytes | None, str | None]:
         callback=callback
     ):
         start = datetime.now()
-        last = -1
         while _recording:
-            sd.sleep(100)
+            sd.sleep(500)  # Update every 0.5s
             elapsed = (datetime.now() - start).seconds
             if elapsed >= MAX_DURATION:
-                print(f"\n⏱️  Max duration reached")
+                print(f"\r   ⏱️  Max duration reached        ")
                 break
-            if elapsed % 5 == 0 and elapsed != last and elapsed > 0:
-                last = elapsed
-                m, s = divmod(elapsed, 60)
-                dot = "🔴" if (elapsed // 5) % 2 == 0 else "⚫"
-                print(f"   {dot} Recording: {m:02d}:{s:02d}")
+            m, s = divmod(elapsed, 60)
+            dot = "🔴" if int(datetime.now().timestamp() * 2) % 2 == 0 else "⚫"
+            print(f"\r   {dot} {m:02d}:{s:02d}", end="", flush=True)
     
     play_stop_tone()
-    print(f"\n🛑 Recording stopped")
+    print(f"\r   🛑 Recording stopped             ")
     
     if not _chunks:
         print("❌ No audio recorded")
