@@ -22,7 +22,4 @@ I just recorded a meeting. Process it and create a Notion page.
 
 4. **CLEANED TRANSCRIPT**: Fix grammar, remove filler words (um, uh, like), format into readable paragraphs. Attribute statements to speakers where possible (e.g., "**Sarah:** We should prioritize the API work first.").
 
-5. **CREATE NOTION PAGE** in the Meetings database:
-   {notion_url}
-   
-   Use the generated title as the page title. Include participants, summary, then the cleaned transcript.
+5. **OUTPUT**: Display the processed notes (participants, summary, cleaned transcript) in the terminal.{notion_instructions}

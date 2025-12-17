@@ -6,7 +6,7 @@ import shutil
 from datetime import datetime
 from pathlib import Path
 
-from .config import WHISPER_URL, NOTION_URL, SAMPLE_RATE, PACKAGE_DIR
+from .config import WHISPER_URL, SAMPLE_RATE, PACKAGE_DIR
 from .recorder import record
 from .transcriber import transcribe, check_whisper
 from .processor import process_with_claude, find_claude
@@ -32,13 +32,7 @@ def check_requirements() -> bool:
             "❌ Claude CLI not found\n"
             "   Install with: npm install -g @anthropic-ai/claude-code"
         )
-    
-    if not NOTION_URL:
-        errors.append(
-            "❌ Notion database URL not set\n"
-            "   Set KUMBUKA_NOTION_URL environment variable"
-        )
-    
+
     if errors:
         print("\n⚠️  Setup incomplete:\n")
         for e in errors:

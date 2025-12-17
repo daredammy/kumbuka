@@ -17,15 +17,16 @@ macOS meeting recorder that transcribes locally with Whisper and generates notes
 - [Claude Code](https://docs.anthropic.com/en/docs/claude-code) - CLI access to Claude
 - Local Whisper server (e.g., [VoiceMode](https://github.com/mbailey/voicemode))
 - Notion account (optional, for auto-saving)
+- Claude code notion mcp setup (optional, for auto-saving) [Notion MCP](https://developers.notion.com/docs/get-started-with-mcp#streamable-http-recommended)
 
 ## macOS Permissions
 
 Kumbuka requires these permissions in **System Settings → Privacy & Security**:
 
-| Permission | Why | When prompted |
-|------------|-----|---------------|
-| **Microphone** | Record audio | First time you run `kumbuka` |
-| **Automation → Calendar** | Read upcoming meetings | First time calendar monitor runs |
+| Permission                | Why                              | When prompted                     |
+| ------------------------- | -------------------------------- | --------------------------------- |
+| **Microphone**            | Record audio                     | First time you run `kumbuka`      |
+| **Automation → Calendar** | Read upcoming meetings           | First time calendar monitor runs  |
 | **Automation → Terminal** | Open Terminal to start recording | When you click "Record" on prompt |
 
 If prompts don't appear, manually add Terminal (or your terminal app) in System Settings.
@@ -69,15 +70,21 @@ claude mcp add --scope user --transport http Notion https://mcp.notion.com/mcp
 ### 5. Install Kumbuka
 
 ```bash
-# Install from GitHub
 uv tool install git+https://github.com/daredammy/kumbuka
+```
 
-# Set your Notion database URL
+### 6. Configure Notion (optional)
+
+To auto-save meeting notes to Notion:
+
+```bash
 export KUMBUKA_NOTION_URL="https://www.notion.so/YOUR-DATABASE-URL"
 
 # Add to shell profile
 echo 'export KUMBUKA_NOTION_URL="https://www.notion.so/YOUR-DATABASE-URL"' >> ~/.zshrc
 ```
+
+Without this, notes are displayed in the terminal only.
 
 ## Usage
 
@@ -143,13 +150,13 @@ kumbuka monitor enable
 
 ## Configuration
 
-| Environment Variable | Default | Description |
-|---------------------|---------|-------------|
-| `KUMBUKA_NOTION_URL` | (required) | Your Notion database URL |
-| `KUMBUKA_WHISPER_URL` | `http://127.0.0.1:2022/v1/audio/transcriptions` | Whisper endpoint |
-| `KUMBUKA_MAX_DURATION` | `7200` | Max recording time (seconds) |
-| `KUMBUKA_CALENDARS` | (all) | Calendars to monitor (comma-separated) |
-| `KUMBUKA_PROMPT_MINUTES` | `2` | Minutes before meeting to prompt |
+| Environment Variable     | Default                                         | Description                            |
+| ------------------------ | ----------------------------------------------- | -------------------------------------- |
+| `KUMBUKA_NOTION_URL`     | (none)                                          | Notion database URL (optional)         |
+| `KUMBUKA_WHISPER_URL`    | `http://127.0.0.1:2022/v1/audio/transcriptions` | Whisper endpoint                       |
+| `KUMBUKA_MAX_DURATION`   | `7200`                                          | Max recording time (seconds)           |
+| `KUMBUKA_CALENDARS`      | (all)                                           | Calendars to monitor (comma-separated) |
+| `KUMBUKA_PROMPT_MINUTES` | `2`                                             | Minutes before meeting to prompt       |
 
 ## Project Structure
 
@@ -159,7 +166,7 @@ kumbuka/
 │   ├── __main__.py         # CLI entry point
 │   ├── config.py           # Configuration
 │   ├── recorder.py         # Audio recording
-│   ├── transcriber.py      # Whisper integration  
+│   ├── transcriber.py      # Whisper integration
 │   ├── processor.py        # Claude integration
 │   ├── prompts/
 │   │   └── meeting.txt     # ← The prompt (easy to customize!)
@@ -176,20 +183,24 @@ To customize meeting processing, edit `kumbuka/prompts/meeting.txt`.
 ## Troubleshooting
 
 **"Whisper not running"**
+
 ```bash
 voicemode start-service whisper
 # Check: curl http://127.0.0.1:2022/health
 ```
 
 **"Claude CLI not found"**
+
 ```bash
 npm install -g @anthropic-ai/claude-code
 ```
 
 **No audio recorded**
+
 - Check microphone permissions: System Settings → Privacy & Security → Microphone
 
 **Calendar monitor not prompting**
+
 1. Check it's running: `kumbuka monitor status`
 2. Check logs: `cat /tmp/kumbuka/monitor.log`
 3. Verify permissions: System Settings → Privacy & Security → Automation
@@ -198,10 +209,14 @@ npm install -g @anthropic-ai/claude-code
 5. Set specific calendars: `export KUMBUKA_CALENDARS="your@email.com"`
 
 **Calendar monitor stopped after restart**
+
+The LaunchAgent should survive restarts automatically. If it doesn't:
+
 - Re-enable: `kumbuka monitor enable`
 - Check LaunchAgent: `launchctl list | grep kumbuka`
 
 **Dialog not appearing**
+
 - Grant Terminal access to System Events in Privacy & Security → Automation
 
 ## Contributing

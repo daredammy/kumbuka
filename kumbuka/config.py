@@ -14,7 +14,7 @@ WHISPER_URL = os.getenv(
     "http://127.0.0.1:2022/v1/audio/transcriptions"
 )
 
-# Notion - users must set this
+# Notion (optional) - if set, notes are saved to Notion
 NOTION_URL = os.getenv("KUMBUKA_NOTION_URL", "")
 
 # Recording

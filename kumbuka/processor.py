@@ -62,11 +62,22 @@ def process_with_claude(
     
     # Load and format prompt
     template = load_prompt(prompt_name)
+
+    # Build Notion instructions only if URL is configured
+    notion_instructions = ""
+    if NOTION_URL:
+        notion_instructions = f"""
+
+6. **CREATE NOTION PAGE** in the Meetings database:
+   {NOTION_URL}
+
+   Use the generated title as the page title. Include participants, summary, then the cleaned transcript."""
+
     prompt = template.format(
         transcript=transcript,
         duration=duration,
         timestamp=timestamp,
-        notion_url=NOTION_URL
+        notion_instructions=notion_instructions
     )
     
     # Run Claude
