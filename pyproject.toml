@@ -15,7 +15,6 @@ classifiers = [
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Operating System :: MacOS",
-    "Operating System :: POSIX :: Linux",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
@@ -29,9 +28,9 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/hypebridge/kumbuka"
-Repository = "https://github.com/hypebridge/kumbuka"
-Issues = "https://github.com/hypebridge/kumbuka/issues"
+Homepage = "https://github.com/daredammy/kumbuka"
+Repository = "https://github.com/daredammy/kumbuka"
+Issues = "https://github.com/daredammy/kumbuka/issues"
 
 [project.scripts]
 kumbuka = "kumbuka.__main__:main"

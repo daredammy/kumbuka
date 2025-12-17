@@ -11,13 +11,15 @@ kumbuka/
 │   ├── recorder.py         # Audio recording
 │   ├── transcriber.py      # Whisper integration
 │   ├── processor.py        # Claude integration
-│   └── prompts/
-│       └── meeting.txt     # Prompt template
+│   ├── prompts/
+│   │   └── meeting.txt     # Prompt template
+│   └── daemon/
+│       └── monitor.py      # Calendar monitoring
 ```
 
 ## Areas
 
-- **Prompts** (`kumbuka/prompts/`) - Template with placeholders: `{transcript}`, `{duration}`, `{timestamp}`, `{notion_url}`
+- **Prompts** (`kumbuka/prompts/`) - Template with placeholders: `{transcript}`, `{duration}`, `{timestamp}`, `{notion_instructions}`
 - **Recorder** (`recorder.py`) - Audio capture via `sounddevice`
 - **Transcriber** (`transcriber.py`) - Whisper API client
 - **Processor** (`processor.py`) - Claude integration
@@ -33,8 +35,8 @@ uv pip install -e .
 ## Testing
 
 ```bash
-export KUMBUKA_NOTION_URL="https://www.notion.so/test-db"
 kumbuka
+# Optionally set KUMBUKA_NOTION_URL to test Notion integration
 ```
 
 ## Submitting Changes

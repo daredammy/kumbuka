@@ -2,6 +2,10 @@
 
 macOS meeting recorder that transcribes locally with Whisper and generates notes with Claude.
 
+## Why
+
+Notion's built-in meeting recording requires an Enterprise subscription. Kumbuka gives you the same workflow—record, transcribe, and save to Notion—without the enterprise price tag. Everything runs locally on your Mac.
+
 ## Features
 
 - Auto-generated titles and participant identification
@@ -10,6 +14,8 @@ macOS meeting recorder that transcribes locally with Whisper and generates notes
 - Optional Notion export
 
 ## Requirements
+
+> **macOS only.** Windows and Linux are not supported.
 
 - **macOS 12+** (Apple Silicon recommended)
 - Python 3.10+
