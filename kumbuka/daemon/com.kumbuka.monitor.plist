@@ -21,6 +21,8 @@
     <integer>60</integer>
     <key>RunAtLoad</key>
     <true/>
+    <key>ProcessType</key>
+    <string>Interactive</string>
     <key>StandardOutPath</key>
     <string>/tmp/kumbuka/monitor.log</string>
     <key>StandardErrorPath</key>

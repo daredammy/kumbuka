@@ -6,8 +6,8 @@ import shutil
 from datetime import datetime
 from pathlib import Path
 
-from .config import WHISPER_URL, SAMPLE_RATE, PACKAGE_DIR
-from .recorder import record
+from .config import WHISPER_URL, SAMPLE_RATE, CHANNELS, PACKAGE_DIR
+from .recorder import record, recover_partial
 from .transcriber import transcribe, check_whisper
 from .processor import process_with_claude, find_claude
 
@@ -60,16 +60,47 @@ def do_record():
         sys.exit(1)
     
     # Process with Claude
-    duration_secs = len(wav) / (SAMPLE_RATE * 2)
+    # Duration: bytes / (sample_rate * bytes_per_sample * channels)
+    duration_secs = len(wav) / (SAMPLE_RATE * 2 * CHANNELS)
     m, s = divmod(int(duration_secs), 60)
-    
+
     process_with_claude(
         transcript=transcript,
         duration=f"{m}m {s}s",
         timestamp=datetime.now().strftime("%Y-%m-%d %H:%M")
     )
-    
+
     print("\n✅ Done!")
+
+
+def do_recover(session: str = None):
+    """Recover a partial recording that was interrupted."""
+    if not check_requirements():
+        sys.exit(1)
+    
+    wav, session = recover_partial(session)
+    if not wav:
+        print("❌ No partial recording to recover")
+        sys.exit(1)
+    
+    # Transcribe
+    transcript = transcribe(wav, session)
+    if not transcript:
+        print("❌ Transcription failed")
+        sys.exit(1)
+    
+    # Process with Claude
+    # Duration: bytes / (sample_rate * bytes_per_sample * channels)
+    duration_secs = len(wav) / (SAMPLE_RATE * 2 * CHANNELS)
+    m, s = divmod(int(duration_secs), 60)
+
+    process_with_claude(
+        transcript=transcript,
+        duration=f"{m}m {s}s",
+        timestamp=datetime.now().strftime("%Y-%m-%d %H:%M")
+    )
+
+    print("\n✅ Recovery complete!")
 
 
 def find_python() -> str:
@@ -135,7 +166,7 @@ def monitor_status():
         capture_output=True,
         text=True
     )
-    
+
     if "com.kumbuka.monitor" in result.stdout:
         print("✅ Calendar monitor is running")
         # Try to get last check time from log
@@ -147,6 +178,30 @@ def monitor_status():
         print("   Enable with: kumbuka monitor enable")
 
 
+def monitor_permissions():
+    """Request calendar permissions using the daemon's Python executable."""
+    print("Requesting calendar permissions...")
+    print("A system dialog should appear asking for calendar access.\n")
+
+    # Use the same Python that the daemon will use
+    python_path = find_python()
+
+    result = subprocess.run(
+        [python_path, "-c", """
+from kumbuka.daemon.monitor import request_calendar_permission
+import sys
+sys.exit(0 if request_calendar_permission() else 1)
+"""],
+        capture_output=False
+    )
+
+    if result.returncode == 0:
+        print("\nYou can now enable the monitor with: kumbuka monitor enable")
+    else:
+        print("\nWithout calendar permissions, the monitor cannot detect meetings.")
+        print("You can manually grant access in System Settings → Privacy & Security → Calendars")
+
+
 def print_usage():
     """Print usage information."""
     print("""
@@ -154,10 +209,15 @@ Kumbuka - Local-first meeting recorder
 
 Usage:
   kumbuka                     Start recording (Ctrl+C to stop)
+  kumbuka recover             Recover last interrupted recording
+  kumbuka recover <session>   Recover specific session (e.g. 2025-12-17_14-30-00)
+  kumbuka monitor permissions Request calendar access (run this first!)
   kumbuka monitor enable      Auto-prompt when calendar meetings start
   kumbuka monitor disable     Turn off auto-prompts
   kumbuka monitor status      Check if monitor is running
   kumbuka help                Show this message
+
+Audio is saved incrementally, so interrupted recordings can be recovered.
 """)
 
 
@@ -172,9 +232,13 @@ def main():
     if not args:
         # Default: record
         do_record()
+    elif args[0] == "recover":
+        # Recover interrupted recording
+        session = args[1] if len(args) > 1 else None
+        do_recover(session)
     elif args[0] == "monitor":
         if len(args) < 2:
-            print("Usage: kumbuka monitor [enable|disable|status]")
+            print("Usage: kumbuka monitor [permissions|enable|disable|status]")
             sys.exit(1)
         
         cmd = args[1]
@@ -184,6 +248,8 @@ def main():
             monitor_disable()
         elif cmd == "status":
             monitor_status()
+        elif cmd == "permissions":
+            monitor_permissions()
         else:
             print(f"Unknown monitor command: {cmd}")
             sys.exit(1)

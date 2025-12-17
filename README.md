@@ -29,13 +29,13 @@ Notion's built-in meeting recording requires an Enterprise subscription. Kumbuka
 
 Kumbuka requires these permissions in **System Settings → Privacy & Security**:
 
-| Permission                | Why                              | When prompted                     |
-| ------------------------- | -------------------------------- | --------------------------------- |
-| **Microphone**            | Record audio                     | First time you run `kumbuka`      |
-| **Automation → Calendar** | Read upcoming meetings           | First time calendar monitor runs  |
-| **Automation → Terminal** | Open Terminal to start recording | When you click "Record" on prompt |
+| Permission                | Why                              | When prompted                          |
+| ------------------------- | -------------------------------- | -------------------------------------- |
+| **Microphone**            | Record audio                     | First time you run `kumbuka`           |
+| **Calendars**             | Read upcoming meetings           | When you run `kumbuka monitor permissions` |
+| **Automation → Terminal** | Open Terminal to start recording | When you click "Record" on prompt      |
 
-If prompts don't appear, manually add Terminal (or your terminal app) in System Settings.
+If prompts don't appear, manually add Python/Terminal in System Settings.
 
 ## Installation
 
@@ -95,9 +95,12 @@ Without this, notes are displayed in the terminal only.
 ## Usage
 
 ```bash
-kumbuka
-# That's it. Ctrl+C to stop.
+kumbuka           # Start recording (Ctrl+C to stop)
+kumbuka -h        # Show all commands
+kumbuka recover   # Recover interrupted recording
 ```
+
+Audio is saved incrementally every 10 seconds, so if the process is interrupted, you can recover with `kumbuka recover`.
 
 ## Auto-Record Calendar Meetings
 
@@ -105,15 +108,19 @@ Kumbuka can watch your calendar and prompt you when meetings are about to start.
 
 ### How it works
 
-1. `kumbuka monitor enable` installs a **LaunchAgent** (`~/Library/LaunchAgents/com.kumbuka.monitor.plist`)
-2. macOS runs this agent every 60 seconds, even after restarts
-3. It queries Calendar.app via AppleScript (works with Google Calendar, Outlook, iCloud - any calendar synced to macOS)
-4. When a meeting starts in 2 minutes, you see a dialog prompt
-5. Click "Record" → opens Terminal and starts recording
+1. `kumbuka monitor permissions` grants calendar access via EventKit
+2. `kumbuka monitor enable` installs a **LaunchAgent** (`~/Library/LaunchAgents/com.kumbuka.monitor.plist`)
+3. macOS runs this agent every 60 seconds, even after restarts
+4. It queries Calendar.app via EventKit (works with Google Calendar, Outlook, iCloud - any calendar synced to macOS)
+5. When a meeting starts in 2 minutes, you see a dialog prompt
+6. Click "Record" → opens Terminal and starts recording
 
 ### Setup
 
 ```bash
+# Grant calendar permissions (required first time)
+kumbuka monitor permissions
+
 # Enable calendar monitoring (survives restarts)
 kumbuka monitor enable
 
@@ -205,14 +212,21 @@ npm install -g @anthropic-ai/claude-code
 
 - Check microphone permissions: System Settings → Privacy & Security → Microphone
 
+**Recording was interrupted / killed**
+
+Audio is saved incrementally. Recover with:
+```bash
+kumbuka recover
+```
+
 **Calendar monitor not prompting**
 
 1. Check it's running: `kumbuka monitor status`
 2. Check logs: `cat /tmp/kumbuka/monitor.log`
-3. Verify permissions: System Settings → Privacy & Security → Automation
-   - Terminal (or iTerm) needs access to Calendar and System Events
-4. Make sure your calendar is synced to Calendar.app
-5. Set specific calendars: `export KUMBUKA_CALENDARS="your@email.com"`
+3. If logs show "No calendars found", run: `kumbuka monitor permissions`
+4. Verify permissions: System Settings → Privacy & Security → Calendars
+5. Make sure your calendar is synced to Calendar.app
+6. Set specific calendars: `export KUMBUKA_CALENDARS="your@email.com"`
 
 **Calendar monitor stopped after restart**
 

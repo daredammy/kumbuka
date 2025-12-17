@@ -4,4 +4,4 @@ Kumbuka - Local-first meeting recorder with AI-powered transcription.
 Swahili: "to remember"
 """
 
-__version__ = "0.3.1"
+__version__ = "0.4.0"
