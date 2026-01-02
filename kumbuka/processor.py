@@ -13,7 +13,7 @@ def find_claude() -> str | None:
     claude = shutil.which("claude")
     if claude:
         return claude
-    
+
     # Check common locations
     locations = [
         Path.home() / ".npm-global/bin/claude",
@@ -23,17 +23,17 @@ def find_claude() -> str | None:
     for loc in locations:
         if loc.exists():
             return str(loc)
-    
+
     return None
 
 
 def load_prompt(name: str = "meeting") -> str:
     """
     Load a prompt template from the prompts directory.
-    
+
     Args:
         name: Prompt name (without .txt extension)
-        
+
     Returns:
         Prompt template string
     """
@@ -44,22 +44,22 @@ def load_prompt(name: str = "meeting") -> str:
 
 
 def process_with_claude(
-    transcript: str, 
-    duration: str, 
+    transcript: str,
+    duration: str,
     timestamp: str,
     prompt_name: str = "meeting"
 ) -> None:
     """
     Send transcript to Claude for processing.
-    
+
     Args:
         transcript: Raw transcript text
         duration: Recording duration string
         timestamp: Recording timestamp string
         prompt_name: Which prompt template to use
     """
-    print(f"\n🤖 Sending to Claude...")
-    
+    print("\n🤖 Sending to Claude...")
+
     # Load and format prompt
     template = load_prompt(prompt_name)
 
@@ -71,7 +71,8 @@ def process_with_claude(
 6. **CREATE NOTION PAGE** in the Meetings database:
    {NOTION_URL}
 
-   Use the generated title as the page title. Include participants, summary, then the cleaned transcript."""
+   Use the generated title as the page title. Include participants, summary,
+   then the cleaned transcript."""
 
     prompt = template.format(
         transcript=transcript,
@@ -79,10 +80,10 @@ def process_with_claude(
         timestamp=timestamp,
         notion_instructions=notion_instructions
     )
-    
+
     # Run Claude
     claude = find_claude()
     if not claude:
         raise RuntimeError("Claude CLI not found")
-    
-    subprocess.run([claude, "-p", prompt])
+
+    subprocess.run([claude, "-p", prompt], check=True)

@@ -9,7 +9,7 @@ Uses EventKit for fast calendar access (handles large calendars).
 import subprocess
 import json
 import os
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 
 # How many minutes before meeting to prompt
@@ -26,7 +26,7 @@ LOG_FILE = Path("/tmp/kumbuka/monitor.log")
 def log(msg: str):
     """Write to log file."""
     LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
-    with open(LOG_FILE, "a") as f:
+    with open(LOG_FILE, "a", encoding="utf-8") as f:
         f.write(f"{datetime.now()}: {msg}\n")
 
 
@@ -37,6 +37,7 @@ def request_calendar_permission() -> bool:
     Returns True if permission was granted.
     """
     try:
+        # pylint: disable=import-outside-toplevel,no-member
         import EventKit
         import time
 
@@ -47,7 +48,7 @@ def request_calendar_permission() -> bool:
             EventKit.EKEntityTypeEvent
         )
 
-        # EKAuthorizationStatus: 0=NotDetermined, 1=Restricted, 2=Denied, 3=Authorized, 4=FullAccess (macOS 14+)
+        # EKAuthorizationStatus: 0=NotDetermined, 1=Restricted, 2=Denied, 3=Authorized, 4=FullAccess
         if status in (3, 4):  # Already authorized
             return True
 
@@ -60,7 +61,7 @@ def request_calendar_permission() -> bool:
         # Request access - this triggers the permission dialog
         granted = [None]  # Use list to allow mutation in callback
 
-        def callback(success, error):
+        def callback(success, _error):
             granted[0] = success
 
         # Try the newer API first (macOS 14+), fall back to older API
@@ -85,13 +86,14 @@ def request_calendar_permission() -> bool:
         if granted[0]:
             print("✅ Calendar permission granted!")
             return True
-        else:
-            print("❌ Calendar permission denied or timed out.")
-            return False
+
+        print("❌ Calendar permission denied or timed out.")
+        return False
 
     except ImportError:
         print("❌ EventKit not available. Install with: pip install pyobjc-framework-EventKit")
         return False
+    # pylint: disable=broad-exception-caught
     except Exception as e:
         print(f"❌ Error requesting permission: {e}")
         return False
@@ -100,6 +102,7 @@ def request_calendar_permission() -> bool:
 def get_upcoming_events_eventkit(minutes_ahead: int = 5) -> list[dict]:
     """Get calendar events using EventKit (fast, handles large calendars)."""
     try:
+        # pylint: disable=import-outside-toplevel,no-member
         import EventKit
         from Foundation import NSDate
 
@@ -107,11 +110,11 @@ def get_upcoming_events_eventkit(minutes_ahead: int = 5) -> list[dict]:
 
         # Get calendars
         all_calendars = store.calendarsForEntityType_(EventKit.EKEntityTypeEvent)
-        
+
         if not all_calendars:
             log("EventKit: No calendars found - check Calendar permissions in System Settings")
             return []
-        
+
         # Filter calendars if specified
         if CALENDARS:
             cal_names = [c.strip().lower() for c in CALENDARS.split(",")]
@@ -121,29 +124,30 @@ def get_upcoming_events_eventkit(minutes_ahead: int = 5) -> list[dict]:
                 return []
         else:
             calendars = list(all_calendars)
-        
+
         # Time range
         now = NSDate.date()
         end = NSDate.dateWithTimeIntervalSinceNow_(minutes_ahead * 60)
-        
+
         # Create predicate and fetch events
         predicate = store.predicateForEventsWithStartDate_endDate_calendars_(
             now, end, calendars
         )
         events = store.eventsMatchingPredicate_(predicate)
-        
+
         result = []
         for evt in events:
             result.append({
                 "id": evt.eventIdentifier(),
                 "title": evt.title() or "Untitled"
             })
-        
+
         return result
-        
+
     except ImportError:
         log("EventKit not available, falling back to AppleScript")
         return get_upcoming_events_applescript(minutes_ahead)
+    # pylint: disable=broad-exception-caught
     except Exception as e:
         log(f"EventKit error: {e}")
         return []
@@ -155,12 +159,15 @@ def get_upcoming_events_applescript(minutes_ahead: int = 5) -> list[dict]:
     subprocess.run(
         ["osascript", "-e", 'tell application "Calendar" to launch'],
         capture_output=True,
-        timeout=5
+        timeout=5,
+        check=False
     )
 
     if CALENDARS:
         cal_names = [c.strip() for c in CALENDARS.split(",")]
-        cal_loop = "\n".join([f'        set end of calList to calendar "{name}"' for name in cal_names])
+        cal_loop = "\n".join(
+            [f'        set end of calList to calendar "{name}"' for name in cal_names]
+        )
         cal_setup = f'''
     set calList to {{}}
     try
@@ -169,7 +176,7 @@ def get_upcoming_events_applescript(minutes_ahead: int = 5) -> list[dict]:
 '''
     else:
         cal_setup = "    set calList to every calendar"
-    
+
     script = f'''
 set now to current date
 set soonEnd to now + ({minutes_ahead} * 60)
@@ -191,26 +198,32 @@ end tell
 
 return output
 '''
-    
+
     try:
         result = subprocess.run(
             ["osascript", "-e", script],
             capture_output=True,
             text=True,
-            timeout=15
+            timeout=15,
+            check=False
         )
         if result.returncode == 0 and result.stdout.strip():
             events = []
             for line in result.stdout.strip().split("\n"):
                 if "|||" in line:
                     parts = line.split("|||", 1)
-                    events.append({"id": parts[0], "title": parts[1] if len(parts) > 1 else "Meeting"})
+                    events.append({
+                        "id": parts[0],
+                        "title": parts[1] if len(parts) > 1 else "Meeting"
+                    })
             return events
     except subprocess.TimeoutExpired:
-        log("AppleScript timeout - calendar has too many events. Grant EventKit permissions in System Settings → Privacy & Security → Calendars")
+        log("AppleScript timeout - calendar has too many events. "
+            "Grant EventKit permissions in System Settings")
+    # pylint: disable=broad-exception-caught
     except Exception as e:
         log(f"AppleScript error: {e}")
-    
+
     return []
 
 
@@ -246,17 +259,22 @@ end tell
             ['/bin/sh', '-c', f'osascript -e {repr(script)}'],
             capture_output=True,
             text=True,
-            timeout=10
+            timeout=10,
+            check=False
         )
         if result.returncode == 0 and result.stdout.strip():
             events = []
             for line in result.stdout.strip().split("\n"):
                 if "|||" in line:
                     parts = line.split("|||", 1)
-                    events.append({"id": parts[0], "title": parts[1] if len(parts) > 1 else "Meeting"})
+                    events.append({
+                        "id": parts[0],
+                        "title": parts[1] if len(parts) > 1 else "Meeting"
+                    })
             return events
     except subprocess.TimeoutExpired:
         log("osascript direct timeout")
+    # pylint: disable=broad-exception-caught
     except Exception as e:
         log(f"osascript direct error: {e}")
     return []
@@ -284,10 +302,11 @@ def load_prompted() -> set:
     """Load set of already-prompted meeting IDs."""
     if PROMPTED_FILE.exists():
         try:
-            data = json.loads(PROMPTED_FILE.read_text())
+            data = json.loads(PROMPTED_FILE.read_text(encoding="utf-8"))
             cutoff = datetime.now().timestamp() - 86400
             return {k for k, v in data.items() if v > cutoff}
-        except:
+        # pylint: disable=broad-exception-caught
+        except Exception:
             pass
     return set()
 
@@ -296,35 +315,108 @@ def save_prompted(prompted: set):
     """Save prompted meeting IDs with timestamps."""
     PROMPTED_FILE.parent.mkdir(parents=True, exist_ok=True)
     data = {mid: datetime.now().timestamp() for mid in prompted}
-    PROMPTED_FILE.write_text(json.dumps(data))
+    PROMPTED_FILE.write_text(json.dumps(data), encoding="utf-8")
 
 
 def show_record_dialog(title: str) -> bool:
+
+
     """Show dialog asking if user wants to record."""
+
+
     safe_title = title.replace('"', '\\"').replace("'", "'")
-    
+
+
+
+
+
     script = f'''
+
+
 tell application "System Events"
+
+
     activate
-    set dialogResult to display dialog "Meeting starting soon:" & return & return & "{safe_title}" & return & return & "Would you like to record?" buttons {{"Skip", "Record"}} default button "Record" with title "Kumbuka" giving up after 30
+
+
+    set msg to "Meeting starting soon:" & return & return
+
+
+    set msg to msg & "{safe_title}" & return & return
+
+
+    set msg to msg & "Would you like to record?"
+
+
     
+
+
+    set dialogResult to display dialog msg buttons {{"Skip", "Record"}} ¬
+
+
+        default button "Record" with title "Kumbuka" giving up after 30
+
+
+    
+
+
     if button returned of dialogResult is "Record" then
+
+
         return "yes"
+
+
     else
+
+
         return "no"
+
+
     end if
+
+
 end tell
+
+
 '''
-    
+
+
+
+
+
     try:
+
+
         result = subprocess.run(
+
+
             ["osascript", "-e", script],
+
+
             capture_output=True,
+
+
             text=True,
-            timeout=35
+
+
+            timeout=35,
+
+
+            check=False
+
+
         )
+
+
         return result.stdout.strip() == "yes"
-    except:
+
+
+    # pylint: disable=broad-exception-caught
+
+
+    except Exception:
+
+
         return False
 
 
@@ -336,31 +428,31 @@ tell application "Terminal"
     do script "kumbuka"
 end tell
 '''
-    subprocess.run(["osascript", "-e", script])
+    subprocess.run(["osascript", "-e", script], check=False)
 
 
 def check_meetings():
     """Main check - called periodically."""
     events = get_upcoming_events(PROMPT_MINUTES_BEFORE)
     log(f"Checked - found {len(events)} upcoming events")
-    
+
     if not events:
         return
-    
+
     prompted = load_prompted()
-    
+
     for event in events:
         event_id = event.get("id", "")
         title = event.get("title", "Untitled Meeting")
-        
+
         if event_id in prompted:
             continue
-        
+
         prompted.add(event_id)
         save_prompted(prompted)
-        
+
         log(f"Prompting for: {title}")
-        
+
         if show_record_dialog(title):
             start_recording()
             break

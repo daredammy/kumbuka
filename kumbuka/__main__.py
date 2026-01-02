@@ -1,5 +1,7 @@
 """Kumbuka CLI entry point."""
 
+from typing import Optional
+import os
 import sys
 import subprocess
 import shutil
@@ -20,13 +22,13 @@ PLIST_DST = Path.home() / "Library/LaunchAgents" / PLIST_NAME
 def check_requirements() -> bool:
     """Verify all requirements are met."""
     errors = []
-    
+
     if not check_whisper():
         errors.append(
             f"❌ Whisper not running at {WHISPER_URL}\n"
-            f"   Start it with: voicemode start-service whisper"
+            "   Start it with: voicemode start-service whisper"
         )
-    
+
     if not find_claude():
         errors.append(
             "❌ Claude CLI not found\n"
@@ -39,7 +41,7 @@ def check_requirements() -> bool:
             print(f"   {e}\n")
         print("See README.md for setup instructions.")
         return False
-    
+
     return True
 
 
@@ -47,18 +49,18 @@ def do_record():
     """Main recording flow."""
     if not check_requirements():
         sys.exit(1)
-    
+
     # Record
     wav, session = record()
     if not wav:
         sys.exit(1)
-    
+
     # Transcribe
-    transcript = transcribe(wav, session)
+    transcript = transcribe(wav, session or "")
     if not transcript:
         print("❌ Transcription failed")
         sys.exit(1)
-    
+
     # Process with Claude
     # Duration: bytes / (sample_rate * bytes_per_sample * channels)
     duration_secs = len(wav) / (SAMPLE_RATE * 2 * CHANNELS)
@@ -73,22 +75,22 @@ def do_record():
     print("\n✅ Done!")
 
 
-def do_recover(session: str = None):
+def do_recover(session: Optional[str] = None):
     """Recover a partial recording that was interrupted."""
     if not check_requirements():
         sys.exit(1)
-    
+
     wav, session = recover_partial(session)
     if not wav:
         print("❌ No partial recording to recover")
         sys.exit(1)
-    
+
     # Transcribe
     transcript = transcribe(wav, session)
     if not transcript:
         print("❌ Transcription failed")
         sys.exit(1)
-    
+
     # Process with Claude
     # Duration: bytes / (sample_rate * bytes_per_sample * channels)
     duration_secs = len(wav) / (SAMPLE_RATE * 2 * CHANNELS)
@@ -109,7 +111,7 @@ def find_python() -> str:
     uv_python = Path.home() / ".local/share/uv/tools/kumbuka/bin/python"
     if uv_python.exists():
         return str(uv_python)
-    
+
     # Fall back to which python
     python = shutil.which("python3") or shutil.which("python")
     return python or "/usr/bin/python3"
@@ -117,25 +119,26 @@ def find_python() -> str:
 
 def monitor_enable():
     """Enable calendar monitoring daemon."""
-    import os
-    
+
     # Create plist with correct paths and env vars
     python_path = find_python()
     calendars = os.getenv("KUMBUKA_CALENDARS", "")
     prompt_minutes = os.getenv("KUMBUKA_PROMPT_MINUTES", "2")
-    
+
     plist_content = PLIST_SRC.read_text()
     plist_content = plist_content.replace("__PYTHON_PATH__", python_path)
     plist_content = plist_content.replace("__CALENDARS__", calendars)
     plist_content = plist_content.replace("__PROMPT_MINUTES__", prompt_minutes)
-    
+
     PLIST_DST.parent.mkdir(parents=True, exist_ok=True)
     PLIST_DST.write_text(plist_content)
-    
+
     # Load the agent
-    subprocess.run(["launchctl", "unload", str(PLIST_DST)], capture_output=True)
-    result = subprocess.run(["launchctl", "load", str(PLIST_DST)], capture_output=True)
-    
+    subprocess.run(["launchctl", "unload", str(PLIST_DST)],
+                   capture_output=True, check=False)
+    result = subprocess.run(["launchctl", "load", str(
+        PLIST_DST)], capture_output=True, check=False)
+
     if result.returncode == 0:
         print("✅ Calendar monitor enabled")
         if calendars:
@@ -143,7 +146,7 @@ def monitor_enable():
         else:
             print("   Watching: all calendars")
         print(f"   Prompt: {prompt_minutes} minutes before meetings")
-        print(f"   Logs: /tmp/kumbuka/monitor.log")
+        print("   Logs: /tmp/kumbuka/monitor.log")
     else:
         print(f"❌ Failed to enable monitor: {result.stderr.decode()}")
         sys.exit(1)
@@ -152,7 +155,8 @@ def monitor_enable():
 def monitor_disable():
     """Disable calendar monitoring daemon."""
     if PLIST_DST.exists():
-        subprocess.run(["launchctl", "unload", str(PLIST_DST)], capture_output=True)
+        subprocess.run(["launchctl", "unload", str(PLIST_DST)],
+                       capture_output=True, check=False)
         PLIST_DST.unlink()
         print("✅ Calendar monitor disabled")
     else:
@@ -164,7 +168,8 @@ def monitor_status():
     result = subprocess.run(
         ["launchctl", "list"],
         capture_output=True,
-        text=True
+        text=True,
+        check=False
     )
 
     if "com.kumbuka.monitor" in result.stdout:
@@ -192,7 +197,8 @@ from kumbuka.daemon.monitor import request_calendar_permission
 import sys
 sys.exit(0 if request_calendar_permission() else 1)
 """],
-        capture_output=False
+        capture_output=False,
+        check=False
     )
 
     if result.returncode == 0:
@@ -224,11 +230,11 @@ Audio is saved incrementally, so interrupted recordings can be recovered.
 def main():
     """Main entry point."""
     args = sys.argv[1:]
-    
+
     if args and (args[0] == "help" or args[0] == "--help" or args[0] == "-h"):
         print_usage()
         return
-    
+
     if not args:
         # Default: record
         do_record()
@@ -240,7 +246,7 @@ def main():
         if len(args) < 2:
             print("Usage: kumbuka monitor [permissions|enable|disable|status]")
             sys.exit(1)
-        
+
         cmd = args[1]
         if cmd == "enable":
             monitor_enable()

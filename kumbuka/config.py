@@ -10,7 +10,7 @@ TEMP_DIR = Path("/tmp/kumbuka")
 
 # Whisper
 WHISPER_URL = os.getenv(
-    "KUMBUKA_WHISPER_URL", 
+    "KUMBUKA_WHISPER_URL",
     "http://127.0.0.1:2022/v1/audio/transcriptions"
 )
 
