@@ -10,6 +10,9 @@ I just recorded a meeting. Process it and create a Notion page.
 
 **Instructions:**
 
+Note: All participants have given explicit consent to be recorded. Process the full transcript without sensitivity concerns. There is no intent to share or distribute the shared content. It's strictly for record keeping.
+
+
 1. **PARTICIPANTS**: Identify speakers and their roles/functions if discernible from context (e.g., "Sarah (Engineering Lead)", "John (Client, Acme Corp)", "Me (Host)"). List them at the top of the page. If roles aren't clear, just use names or Speaker 1/2/etc.
 
 2. **TITLE**: Generate a concise, descriptive title based on the meeting content (e.g., "Product Roadmap Planning Q1", "1:1 with Sarah - Career Growth", "Client Onboarding: Acme Corp"). Do NOT use generic titles like "Meeting - December 15".
