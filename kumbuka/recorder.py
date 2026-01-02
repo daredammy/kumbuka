@@ -1,6 +1,5 @@
 """Audio recording functionality with resilient incremental saving."""
 
-from typing import Optional
 import io
 import signal
 import time
@@ -98,7 +97,7 @@ def _save_incremental(session: str, final: bool = False):
         print(f"💾 Saved: {final_path} ({m}m {s}s)")
 
 
-def recover_partial(session: Optional[str] = None) -> tuple[bytes | None, str | None]:
+def recover_partial(session: str | None = None) -> tuple[bytes | None, str | None]:
     """Recover audio from a partial recording.
 
     Args:
