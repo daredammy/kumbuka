@@ -167,6 +167,7 @@ kumbuka monitor enable
 | ------------------------ | ----------------------------------------------- | -------------------------------------- |
 | `KUMBUKA_NOTION_URL`     | (none)                                          | Notion database URL (optional)         |
 | `KUMBUKA_WHISPER_URL`    | `http://127.0.0.1:2022/v1/audio/transcriptions` | Whisper endpoint                       |
+| `KUMBUKA_WHISPER_CMD`    | (none)                                          | Whisper server command (for auto-restart) |
 | `KUMBUKA_MAX_DURATION`   | `7200`                                          | Max recording time (seconds)           |
 | `KUMBUKA_CALENDARS`      | (all)                                           | Calendars to monitor (comma-separated) |
 | `KUMBUKA_PROMPT_MINUTES` | `2`                                             | Minutes before meeting to prompt       |
@@ -217,6 +218,19 @@ npm install -g @anthropic-ai/claude-code
 Audio is saved incrementally. Recover with:
 ```bash
 kumbuka recover
+```
+
+**Whisper outputs gibberish like "[ sign unzipping ]"**
+
+This is a known Whisper hallucination issue that occurs when the model gets into a degenerate state after running for extended periods. Kumbuka will auto-detect this and attempt to restart Whisper if `KUMBUKA_WHISPER_CMD` is set:
+
+```bash
+# Set your Whisper command for auto-restart
+export KUMBUKA_WHISPER_CMD="/path/to/whisper-server --host 0.0.0.0 --port 2022 --model /path/to/model.bin"
+
+# Or manually restart Whisper
+pkill -f whisper-server
+voicemode start-service whisper
 ```
 
 **Calendar monitor not prompting**

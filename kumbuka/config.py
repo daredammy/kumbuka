@@ -14,6 +14,10 @@ WHISPER_URL = os.getenv(
     "http://127.0.0.1:2022/v1/audio/transcriptions"
 )
 
+# Whisper server command for auto-restart on hallucination
+# Example: "/path/to/whisper-server --host 0.0.0.0 --port 2022 --model /path/to/model.bin"
+WHISPER_CMD = os.getenv("KUMBUKA_WHISPER_CMD", "")
+
 # Notion (optional) - if set, notes are saved to Notion
 NOTION_URL = os.getenv("KUMBUKA_NOTION_URL", "")
 
