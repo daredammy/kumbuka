@@ -68,8 +68,11 @@ def process_with_claude(
     if NOTION_URL:
         notion_instructions = f"""
 
-6. **CREATE NOTION PAGE** in the Meetings database:
+6. **CREATE A NEW NOTION SUBPAGE** for this meeting in the Meetings database:
    {NOTION_URL}
+
+   IMPORTANT: Each meeting must have its own separate subpage. Do NOT update or
+   modify any existing pages - always create a fresh new subpage for this meeting.
 
    Use the generated title as the page title. Include participants, summary,
    then the cleaned transcript."""
