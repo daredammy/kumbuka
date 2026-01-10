@@ -23,6 +23,16 @@ Note: All participants have given explicit consent to be recorded. Process the f
    
    Other sections to include as relevant: Overview, Key Discussion Points, Open Questions, Next Steps, Blockers, Feedback, etc.
 
-4. **CLEANED TRANSCRIPT**: Fix grammar, remove filler words (um, uh, like), format into readable paragraphs. Attribute statements to speakers where possible (e.g., "**Sarah:** We should prioritize the API work first.").
+4. **COMMUNICATION FEEDBACK** (for the host/recorder - "Me"): Provide constructive feedback on how I could have communicated better during this meeting. Be specific and cite examples from the transcript. Consider:
+   - **Vocabulary**: Suggest better word choices or more precise terminology
+   - **Clarity**: Point out unclear statements or confusing explanations
+   - **Tone & Empathy**: Note missed opportunities to show understanding or acknowledgment
+   - **Listening**: Identify moments where I talked over others or missed their points
+   - **Questions**: Suggest better ways to phrase questions or probe deeper
+   - **Structure**: Note if points were disorganized or could be presented more logically
 
-5. **OUTPUT**: Display the processed notes (participants, summary, cleaned transcript) in the terminal.{notion_instructions}
+   Be honest but constructive. Skip this section if the recording is a solo session or if communication was already effective.
+
+5. **CLEANED TRANSCRIPT**: Fix grammar, remove filler words (um, uh, like), format into readable paragraphs. Attribute statements to speakers where possible (e.g., "**Sarah:** We should prioritize the API work first.").
+
+6. **OUTPUT**: Display the processed notes (participants, summary, communication feedback, cleaned transcript) in the terminal.{notion_instructions}

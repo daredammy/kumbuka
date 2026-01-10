@@ -74,7 +74,31 @@ uv tool install git+https://github.com/daredammy/kumbuka
 
 ### 5. Configure Notion (optional)
 
-To auto-save meeting notes to Notion:
+To auto-save meeting notes to Notion, choose one of two integration methods:
+
+#### Option A: MCP Integration (recommended for Claude Code users)
+
+If you use Claude Code with the Notion MCP server:
+
+1. **Connect Notion MCP** in Claude Code:
+   ```bash
+   claude /mcp   # Follow prompts to authenticate with Notion
+   ```
+
+2. **Connect your Meetings page** to Claude Code:
+   - Open your Meetings page in Notion
+   - Click ••• → Connections → Add "Claude" (or your MCP integration name)
+
+3. **Set environment variables**:
+   ```bash
+   # Add to your shell profile (~/.zshrc)
+   export KUMBUKA_NOTION_URL="https://www.notion.so/Your-Meetings-Page-abc123"
+   export KUMBUKA_NOTION_MODE="mcp"
+   ```
+
+#### Option B: Token Integration (for standalone use)
+
+If you prefer using a Notion API token directly:
 
 1. **Create a Notion integration** at https://www.notion.so/profile/integrations
    - Click "New integration"
@@ -85,26 +109,26 @@ To auto-save meeting notes to Notion:
    - Open your Meetings page in Notion
    - Click ••• → Connections → Add your integration
 
-3. **Set environment variables**
+3. **Set environment variables**:
+   ```bash
+   # Add to your shell profile (~/.zshrc)
+   export NOTION_TOKEN="ntn_YOUR_TOKEN_HERE"
+   export KUMBUKA_NOTION_URL="https://www.notion.so/Your-Meetings-Page-abc123"
+   export KUMBUKA_NOTION_MODE="token"  # This is the default
+   ```
 
-```bash
-# Add to your shell profile (~/.zshrc)
-export NOTION_TOKEN="ntn_YOUR_TOKEN_HERE"
-export KUMBUKA_NOTION_URL="https://www.notion.so/Your-Meetings-Page-abc123"
-```
+#### After configuration
 
-4. **Reload your shell**
+1. **Reload your shell**:
+   ```bash
+   source ~/.zshrc
+   ```
 
-```bash
-source ~/.zshrc
-```
-
-5. **If using calendar monitor**, re-enable to pick up the new token:
-
-```bash
-kumbuka monitor disable
-kumbuka monitor enable
-```
+2. **If using calendar monitor**, re-enable to pick up new settings:
+   ```bash
+   kumbuka monitor disable
+   kumbuka monitor enable
+   ```
 
 Without these variables, notes are displayed in the terminal only.
 
@@ -181,8 +205,9 @@ kumbuka monitor enable
 
 | Environment Variable     | Default                                         | Description                            |
 | ------------------------ | ----------------------------------------------- | -------------------------------------- |
-| `NOTION_TOKEN`           | (none)                                          | Notion integration token (starts with `ntn_`) |
+| `NOTION_TOKEN`           | (none)                                          | Notion integration token (starts with `ntn_`) - required for token mode |
 | `KUMBUKA_NOTION_URL`     | (none)                                          | Notion page URL for meeting notes      |
+| `KUMBUKA_NOTION_MODE`    | `token`                                         | Notion integration: `mcp` or `token`   |
 | `KUMBUKA_WHISPER_URL`    | `http://127.0.0.1:2022/v1/audio/transcriptions` | Whisper endpoint                       |
 | `KUMBUKA_WHISPER_CMD`    | (none)                                          | Whisper server command (for auto-restart) |
 | `KUMBUKA_MAX_DURATION`   | `7200`                                          | Max recording time (seconds)           |

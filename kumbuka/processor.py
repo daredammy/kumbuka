@@ -4,7 +4,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from .config import PROMPTS_DIR, NOTION_URL
+from .config import PROMPTS_DIR, NOTION_URL, NOTION_MODE
 
 
 def find_claude() -> str | None:
@@ -66,19 +66,38 @@ def process_with_claude(
     # Build Notion instructions only if URL is configured
     notion_instructions = ""
     if NOTION_URL:
-        notion_instructions = f"""
+        if NOTION_MODE == "mcp":
+            # MCP mode: Use Claude Code's Notion MCP integration
+            notion_instructions = f"""
 
-6. **CREATE A NEW NOTION SUBPAGE** for this meeting:
+7. **CREATE A NEW NOTION SUBPAGE** for this meeting:
    Parent page: {NOTION_URL}
 
-   IMPORTANT: Use the kumbuka.notion wrapper (NOT the Notion MCP tools) to create
-   the subpage. The MCP tools have a bug with object parameter serialization.
+   Use the Notion MCP tools to create a new subpage under the parent page.
 
    Steps:
-   a) First, write the meeting notes to a temporary file (e.g., /tmp/meeting_notes.md)
-      Format the content with markdown: use ## for headers, - for bullets, --- for dividers
-   b) Then run: python -m kumbuka.notion create "{NOTION_URL}" "<meeting_title>" /tmp/meeting_notes.md
-   c) The command will output the new page URL
+   a) Use notion-fetch to get the parent page ID from the URL
+   b) Use notion-create-pages to create a new subpage with:
+      - Title: the generated meeting title
+      - Content: participants, summary, then the cleaned transcript
+      - Format with markdown: ## for headers, - for bullets, --- for dividers
+
+   Each meeting must have its own separate subpage."""
+        else:
+            # Token mode: Use the kumbuka.notion CLI with NOTION_TOKEN
+            notion_instructions = f"""
+
+7. **CREATE A NEW NOTION SUBPAGE** for this meeting:
+   Parent page: {NOTION_URL}
+
+   Use the Bash command below to create the page (requires NOTION_TOKEN env var).
+
+   Steps:
+   a) First, write the meeting notes to a temporary file /tmp/meeting_notes.md
+      Format with markdown: ## for headers, - for bullets, --- for dividers
+   b) Run this exact command via Bash:
+      ~/.local/share/uv/tools/kumbuka/bin/python -m kumbuka.notion create "{NOTION_URL}" "<meeting_title>" /tmp/meeting_notes.md
+   c) The command outputs the new page URL - include it in your response
 
    Each meeting must have its own separate subpage. Use the generated title as
    the page title. Include participants, summary, then the cleaned transcript."""
