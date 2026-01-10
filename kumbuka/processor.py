@@ -68,14 +68,20 @@ def process_with_claude(
     if NOTION_URL:
         notion_instructions = f"""
 
-6. **CREATE A NEW NOTION SUBPAGE** for this meeting in the Meetings database:
-   {NOTION_URL}
+6. **CREATE A NEW NOTION SUBPAGE** for this meeting:
+   Parent page: {NOTION_URL}
 
-   IMPORTANT: Each meeting must have its own separate subpage. Do NOT update or
-   modify any existing pages - always create a fresh new subpage for this meeting.
+   IMPORTANT: Use the kumbuka.notion wrapper (NOT the Notion MCP tools) to create
+   the subpage. The MCP tools have a bug with object parameter serialization.
 
-   Use the generated title as the page title. Include participants, summary,
-   then the cleaned transcript."""
+   Steps:
+   a) First, write the meeting notes to a temporary file (e.g., /tmp/meeting_notes.md)
+      Format the content with markdown: use ## for headers, - for bullets, --- for dividers
+   b) Then run: python -m kumbuka.notion create "{NOTION_URL}" "<meeting_title>" /tmp/meeting_notes.md
+   c) The command will output the new page URL
+
+   Each meeting must have its own separate subpage. Use the generated title as
+   the page title. Include participants, summary, then the cleaned transcript."""
 
     prompt = template.format(
         transcript=transcript,

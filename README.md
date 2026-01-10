@@ -23,7 +23,6 @@ Notion's built-in meeting recording requires an Enterprise subscription. Kumbuka
 - [Claude Code](https://docs.anthropic.com/en/docs/claude-code) - CLI access to Claude
 - Local Whisper server (e.g., [VoiceMode](https://github.com/mbailey/voicemode))
 - Notion account (optional, for auto-saving)
-- Claude code notion mcp setup (optional, for auto-saving) [Notion MCP](https://developers.notion.com/docs/get-started-with-mcp#streamable-http-recommended)
 
 ## macOS Permissions
 
@@ -67,30 +66,47 @@ voicemode start-service whisper
 voicemode enable-service whisper
 ```
 
-### 4. Set up Notion MCP (optional)
-
-```bash
-claude mcp add --scope user --transport http Notion https://mcp.notion.com/mcp
-```
-
-### 5. Install Kumbuka
+### 4. Install Kumbuka
 
 ```bash
 uv tool install git+https://github.com/daredammy/kumbuka
 ```
 
-### 6. Configure Notion (optional)
+### 5. Configure Notion (optional)
 
 To auto-save meeting notes to Notion:
 
-```bash
-export KUMBUKA_NOTION_URL="https://www.notion.so/YOUR-DATABASE-URL"
+1. **Create a Notion integration** at https://www.notion.so/profile/integrations
+   - Click "New integration"
+   - Give it a name (e.g., "Kumbuka")
+   - Copy the "Internal Integration Secret" (starts with `ntn_`)
 
-# Add to shell profile
-echo 'export KUMBUKA_NOTION_URL="https://www.notion.so/YOUR-DATABASE-URL"' >> ~/.zshrc
+2. **Connect your Meetings page** to the integration
+   - Open your Meetings page in Notion
+   - Click ••• → Connections → Add your integration
+
+3. **Set environment variables**
+
+```bash
+# Add to your shell profile (~/.zshrc)
+export NOTION_TOKEN="ntn_YOUR_TOKEN_HERE"
+export KUMBUKA_NOTION_URL="https://www.notion.so/Your-Meetings-Page-abc123"
 ```
 
-Without this, notes are displayed in the terminal only.
+4. **Reload your shell**
+
+```bash
+source ~/.zshrc
+```
+
+5. **If using calendar monitor**, re-enable to pick up the new token:
+
+```bash
+kumbuka monitor disable
+kumbuka monitor enable
+```
+
+Without these variables, notes are displayed in the terminal only.
 
 ## Usage
 
@@ -165,7 +181,8 @@ kumbuka monitor enable
 
 | Environment Variable     | Default                                         | Description                            |
 | ------------------------ | ----------------------------------------------- | -------------------------------------- |
-| `KUMBUKA_NOTION_URL`     | (none)                                          | Notion database URL (optional)         |
+| `NOTION_TOKEN`           | (none)                                          | Notion integration token (starts with `ntn_`) |
+| `KUMBUKA_NOTION_URL`     | (none)                                          | Notion page URL for meeting notes      |
 | `KUMBUKA_WHISPER_URL`    | `http://127.0.0.1:2022/v1/audio/transcriptions` | Whisper endpoint                       |
 | `KUMBUKA_WHISPER_CMD`    | (none)                                          | Whisper server command (for auto-restart) |
 | `KUMBUKA_MAX_DURATION`   | `7200`                                          | Max recording time (seconds)           |
@@ -182,6 +199,7 @@ kumbuka/
 │   ├── recorder.py         # Audio recording
 │   ├── transcriber.py      # Whisper integration
 │   ├── processor.py        # Claude integration
+│   ├── notion.py           # Notion API wrapper
 │   ├── prompts/
 │   │   └── meeting.txt     # ← The prompt (easy to customize!)
 │   └── daemon/
@@ -241,6 +259,10 @@ voicemode start-service whisper
 4. Verify permissions: System Settings → Privacy & Security → Calendars
 5. Make sure your calendar is synced to Calendar.app
 6. Set specific calendars: `export KUMBUKA_CALENDARS="your@email.com"`
+7. **For Google Calendar**: Calendar.app must be running for EventKit to detect synced calendars. Add it to Login Items:
+   ```bash
+   osascript -e 'tell application "System Events" to make login item at end with properties {path:"/System/Applications/Calendar.app", hidden:true}'
+   ```
 
 **Calendar monitor stopped after restart**
 

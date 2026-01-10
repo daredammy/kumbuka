@@ -124,11 +124,13 @@ def monitor_enable():
     python_path = find_python()
     calendars = os.getenv("KUMBUKA_CALENDARS", "")
     prompt_minutes = os.getenv("KUMBUKA_PROMPT_MINUTES", "2")
+    notion_token = os.getenv("NOTION_TOKEN", "")
 
     plist_content = PLIST_SRC.read_text()
     plist_content = plist_content.replace("__PYTHON_PATH__", python_path)
     plist_content = plist_content.replace("__CALENDARS__", calendars)
     plist_content = plist_content.replace("__PROMPT_MINUTES__", prompt_minutes)
+    plist_content = plist_content.replace("__NOTION_TOKEN__", notion_token)
 
     PLIST_DST.parent.mkdir(parents=True, exist_ok=True)
     PLIST_DST.write_text(plist_content)
