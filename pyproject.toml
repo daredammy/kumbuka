@@ -4,7 +4,7 @@ version = "0.4.0"
 description = "Local-first meeting recorder with AI-powered transcription"
 readme = "README.md"
 license = {text = "MIT"}
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 authors = [
     {name = "HypeBridge", email = "hello@hypebridge.com"}
 ]
@@ -16,16 +16,17 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: MacOS",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Multimedia :: Sound/Audio :: Speech",
 ]
 dependencies = [
     "numpy>=1.24.0",
     "sounddevice>=0.4.6",
     "httpx>=0.24.0",
-    "pyobjc-framework-eventkit>=12.1",
+    "google-api-python-client>=2.0.0",
+    "google-auth-oauthlib>=1.0.0",
 ]
 
 [project.urls]

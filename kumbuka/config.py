@@ -30,3 +30,6 @@ NOTION_MODE = os.getenv("KUMBUKA_NOTION_MODE", "token")
 MAX_DURATION = int(os.getenv("KUMBUKA_MAX_DURATION", "7200"))  # 2 hours
 SAMPLE_RATE = 16000
 CHANNELS = 1
+
+# Calendar monitoring - minutes before meeting to prompt
+PROMPT_MINUTES = int(os.getenv("KUMBUKA_PROMPT_MINUTES", "2"))

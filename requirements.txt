@@ -4,4 +4,6 @@
 numpy>=1.24.0
 sounddevice>=0.4.6
 httpx>=0.24.0
-pyobjc-framework-EventKit>=12.1
+pyobjc-framework-CoreAudio>=10.0
+google-api-python-client>=2.0.0
+google-auth-oauthlib>=1.0.0

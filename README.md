@@ -12,6 +12,7 @@ Notion's built-in meeting recording requires an Enterprise subscription. Kumbuka
 - Summary, decisions, and action items extraction
 - Speaker-attributed transcript
 - Optional Notion export
+- Google Calendar integration for automatic meeting prompts
 
 ## Requirements
 
@@ -23,18 +24,16 @@ Notion's built-in meeting recording requires an Enterprise subscription. Kumbuka
 - [Claude Code](https://docs.anthropic.com/en/docs/claude-code) - CLI access to Claude
 - Local Whisper server (e.g., [VoiceMode](https://github.com/mbailey/voicemode))
 - Notion account (optional, for auto-saving)
+- Google account (optional, for calendar monitoring)
 
 ## macOS Permissions
 
 Kumbuka requires these permissions in **System Settings → Privacy & Security**:
 
-| Permission                | Why                              | When prompted                          |
-| ------------------------- | -------------------------------- | -------------------------------------- |
-| **Microphone**            | Record audio                     | First time you run `kumbuka`           |
-| **Calendars**             | Read upcoming meetings           | When you run `kumbuka monitor permissions` |
-| **Automation → Terminal** | Open Terminal to start recording | When you click "Record" on prompt      |
-
-If prompts don't appear, manually add Python/Terminal in System Settings.
+| Permission                | Why                              | When prompted                     |
+| ------------------------- | -------------------------------- | --------------------------------- |
+| **Microphone**            | Record audio                     | First time you run `kumbuka`      |
+| **Automation → Terminal** | Open Terminal to start recording | When you click "Record" on prompt |
 
 ## Installation
 
@@ -81,11 +80,13 @@ To auto-save meeting notes to Notion, choose one of two integration methods:
 If you use Claude Code with the Notion MCP server:
 
 1. **Connect Notion MCP** in Claude Code:
+
    ```bash
    claude /mcp   # Follow prompts to authenticate with Notion
    ```
 
 2. **Connect your Meetings page** to Claude Code:
+
    - Open your Meetings page in Notion
    - Click ••• → Connections → Add "Claude" (or your MCP integration name)
 
@@ -101,11 +102,13 @@ If you use Claude Code with the Notion MCP server:
 If you prefer using a Notion API token directly:
 
 1. **Create a Notion integration** at https://www.notion.so/profile/integrations
+
    - Click "New integration"
    - Give it a name (e.g., "Kumbuka")
    - Copy the "Internal Integration Secret" (starts with `ntn_`)
 
 2. **Connect your Meetings page** to the integration
+
    - Open your Meetings page in Notion
    - Click ••• → Connections → Add your integration
 
@@ -120,6 +123,7 @@ If you prefer using a Notion API token directly:
 #### After configuration
 
 1. **Reload your shell**:
+
    ```bash
    source ~/.zshrc
    ```
@@ -144,32 +148,52 @@ Audio is saved incrementally every 10 seconds, so if the process is interrupted,
 
 ## Auto-Record Calendar Meetings
 
-Kumbuka can watch your calendar and prompt you when meetings are about to start.
+Kumbuka can watch your Google Calendar and prompt you when meetings are about to start.
 
 ### How it works
 
-1. `kumbuka monitor permissions` grants calendar access via EventKit
+1. `kumbuka calendar auth` authenticates with Google Calendar via OAuth
 2. `kumbuka monitor enable` installs a **LaunchAgent** (`~/Library/LaunchAgents/com.kumbuka.monitor.plist`)
 3. macOS runs this agent every 60 seconds, even after restarts
-4. It queries Calendar.app via EventKit (works with Google Calendar, Outlook, iCloud - any calendar synced to macOS)
+4. It queries Google Calendar directly via API
 5. When a meeting starts in 2 minutes, you see a dialog prompt
 6. Click "Record" → opens Terminal and starts recording
 
 ### Setup
 
 ```bash
-# Grant calendar permissions (required first time)
-kumbuka monitor permissions
+# 1. Download OAuth credentials from Google Cloud Console
+#    (Create project → Enable Calendar API → Create OAuth credentials)
+#    Save as ~/.kumbuka/credentials.json
 
-# Enable calendar monitoring (survives restarts)
+# 2. Authenticate with Google Calendar
+kumbuka calendar auth
+
+# 3. Test that it works
+kumbuka calendar test
+
+# 4. Enable calendar monitoring (survives restarts)
 kumbuka monitor enable
 
-# Check if running
+# Check status
 kumbuka monitor status
 
 # Disable
 kumbuka monitor disable
 ```
+
+### Google Cloud Setup
+
+To use Google Calendar integration:
+
+1. Go to [Google Cloud Console](https://console.cloud.google.com/)
+2. Create a new project (or use existing)
+3. Enable the **Google Calendar API**
+4. Go to **Credentials** → Create **OAuth 2.0 Client ID**
+   - Application type: Desktop app
+   - Download the JSON file
+5. Save as `~/.kumbuka/credentials.json`
+6. Run `kumbuka calendar auth` to complete OAuth flow
 
 ### Dialog prompt
 
@@ -177,9 +201,8 @@ When a meeting is about to start:
 
 ```
 ┌─────────────────────────────────────┐
-│ Meeting starting soon:              │
-│                                     │
-│ Weekly Standup                      │
+│ Meeting: Weekly Standup             │
+│ (starting soon)                     │
 │                                     │
 │ Would you like to record?           │
 │                                     │
@@ -190,10 +213,6 @@ When a meeting is about to start:
 ### Configuration
 
 ```bash
-# Which calendars to watch (comma-separated)
-# Find your calendar names in Calendar.app sidebar
-export KUMBUKA_CALENDARS="work@company.com,personal@gmail.com"
-
 # How many minutes before meeting to prompt (default: 2)
 export KUMBUKA_PROMPT_MINUTES="5"
 
@@ -203,16 +222,15 @@ kumbuka monitor enable
 
 ## Configuration
 
-| Environment Variable     | Default                                         | Description                            |
-| ------------------------ | ----------------------------------------------- | -------------------------------------- |
+| Environment Variable     | Default                                         | Description                                                             |
+| ------------------------ | ----------------------------------------------- | ----------------------------------------------------------------------- |
 | `NOTION_TOKEN`           | (none)                                          | Notion integration token (starts with `ntn_`) - required for token mode |
-| `KUMBUKA_NOTION_URL`     | (none)                                          | Notion page URL for meeting notes      |
-| `KUMBUKA_NOTION_MODE`    | `token`                                         | Notion integration: `mcp` or `token`   |
-| `KUMBUKA_WHISPER_URL`    | `http://127.0.0.1:2022/v1/audio/transcriptions` | Whisper endpoint                       |
-| `KUMBUKA_WHISPER_CMD`    | (none)                                          | Whisper server command (for auto-restart) |
-| `KUMBUKA_MAX_DURATION`   | `7200`                                          | Max recording time (seconds)           |
-| `KUMBUKA_CALENDARS`      | (all)                                           | Calendars to monitor (comma-separated) |
-| `KUMBUKA_PROMPT_MINUTES` | `2`                                             | Minutes before meeting to prompt       |
+| `KUMBUKA_NOTION_URL`     | (none)                                          | Notion page URL for meeting notes                                       |
+| `KUMBUKA_NOTION_MODE`    | `token`                                         | Notion integration: `mcp` or `token`                                    |
+| `KUMBUKA_WHISPER_URL`    | `http://127.0.0.1:2022/v1/audio/transcriptions` | Whisper endpoint                                                        |
+| `KUMBUKA_WHISPER_CMD`    | (none)                                          | Whisper server command (for auto-restart)                               |
+| `KUMBUKA_MAX_DURATION`   | `7200`                                          | Max recording time (seconds)                                            |
+| `KUMBUKA_PROMPT_MINUTES` | `2`                                             | Minutes before meeting to prompt                                        |
 
 ## Project Structure
 
@@ -224,11 +242,12 @@ kumbuka/
 │   ├── recorder.py         # Audio recording
 │   ├── transcriber.py      # Whisper integration
 │   ├── processor.py        # Claude integration
+│   ├── calendar.py         # Google Calendar integration
 │   ├── notion.py           # Notion API wrapper
 │   ├── prompts/
 │   │   └── meeting.txt     # ← The prompt (easy to customize!)
 │   └── daemon/
-│       └── monitor.py      # Calendar monitoring
+│       └── monitor.py      # Calendar monitoring daemon
 ├── pyproject.toml
 ├── README.md
 ├── CONTRIBUTING.md
@@ -259,6 +278,7 @@ npm install -g @anthropic-ai/claude-code
 **Recording was interrupted / killed**
 
 Audio is saved incrementally. Recover with:
+
 ```bash
 kumbuka recover
 ```
@@ -280,14 +300,9 @@ voicemode start-service whisper
 
 1. Check it's running: `kumbuka monitor status`
 2. Check logs: `cat /tmp/kumbuka/monitor.log`
-3. If logs show "No calendars found", run: `kumbuka monitor permissions`
-4. Verify permissions: System Settings → Privacy & Security → Calendars
-5. Make sure your calendar is synced to Calendar.app
-6. Set specific calendars: `export KUMBUKA_CALENDARS="your@email.com"`
-7. **For Google Calendar**: Calendar.app must be running for EventKit to detect synced calendars. Add it to Login Items:
-   ```bash
-   osascript -e 'tell application "System Events" to make login item at end with properties {path:"/System/Applications/Calendar.app", hidden:true}'
-   ```
+3. Verify Google Calendar auth: `kumbuka calendar test`
+4. If "Not authenticated": `kumbuka calendar auth`
+5. Check credentials file exists: `ls ~/.kumbuka/credentials.json`
 
 **Calendar monitor stopped after restart**
 

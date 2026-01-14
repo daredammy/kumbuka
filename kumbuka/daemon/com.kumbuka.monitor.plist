@@ -12,8 +12,6 @@
     </array>
     <key>EnvironmentVariables</key>
     <dict>
-        <key>KUMBUKA_CALENDARS</key>
-        <string>__CALENDARS__</string>
         <key>KUMBUKA_PROMPT_MINUTES</key>
         <string>__PROMPT_MINUTES__</string>
         <key>NOTION_TOKEN</key>
