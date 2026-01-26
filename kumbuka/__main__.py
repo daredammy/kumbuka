@@ -9,10 +9,10 @@ from datetime import datetime
 from pathlib import Path
 
 from .config import (
-    WHISPER_URL, SAMPLE_RATE, CHANNELS, PACKAGE_DIR, PROMPT_MINUTES
+    SAMPLE_RATE, CHANNELS, PACKAGE_DIR, PROMPT_MINUTES, TEMP_DIR
 )
 from .recorder import record, recover_partial
-from .transcriber import transcribe, check_whisper
+from .transcriber import transcribe, check_fluidaudio
 from .processor import process_with_claude, find_claude
 
 
@@ -25,10 +25,11 @@ def check_requirements() -> bool:
     """Verify all requirements are met."""
     errors = []
 
-    if not check_whisper():
+    if not check_fluidaudio():
         errors.append(
-            f"❌ Whisper not running at {WHISPER_URL}\n"
-            "   Start it with: voicemode start-service whisper"
+            "❌ FluidAudio not found or Swift not installed\n"
+            "   Install Swift and clone FluidAudio:\n"
+            "   git clone https://github.com/FluidInference/FluidAudio.git ~/FluidAudio"
         )
 
     if not find_claude():
@@ -58,7 +59,8 @@ def do_record():
         sys.exit(1)
 
     # Transcribe
-    transcript = transcribe(wav, session or "")
+    wav_path = TEMP_DIR / f"{session}.wav"
+    transcript = transcribe(wav_path)
     if not transcript:
         print("❌ Transcription failed")
         sys.exit(1)
@@ -88,7 +90,8 @@ def do_recover(session: Optional[str] = None):
         sys.exit(1)
 
     # Transcribe
-    transcript = transcribe(wav, recovered_session)
+    wav_path = TEMP_DIR / f"{recovered_session}.wav"
+    transcript = transcribe(wav_path)
     if not transcript:
         print("❌ Transcription failed")
         sys.exit(1)
@@ -239,7 +242,8 @@ def calendar_test():
     upcoming = get_upcoming_events(60)
     if upcoming:
         for event in upcoming:
-            print(f"  📅 {event.title} @ {event.start.strftime('%H:%M')} ({event.calendar_name})")
+            print(
+                f"  📅 {event.title} @ {event.start.strftime('%H:%M')} ({event.calendar_name})")
     else:
         print("  (none)")
 

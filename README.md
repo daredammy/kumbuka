@@ -1,28 +1,31 @@
 # Kumbuka
 
-macOS meeting recorder that transcribes locally with Whisper and generates notes with Claude.
+macOS meeting recorder that transcribes locally with **FluidAudio (Parakeet TDT v3)** and generates notes with Claude.
 
 ## Why
 
 Notion's built-in meeting recording requires an Enterprise subscription. Kumbuka gives you the same workflow—record, transcribe, and save to Notion—without the enterprise price tag. Everything runs locally on your Mac.
 
+It uses **FluidAudio** (wrapping NVIDIA's Parakeet TDT model) for transcription, which is **50x faster than real-time** and optimized for Apple Silicon (Neural Engine), freeing up your CPU.
+
 ## Features
 
-- Auto-generated titles and participant identification
-- Summary, decisions, and action items extraction
-- Speaker-attributed transcript
-- Optional Notion export
-- Google Calendar integration for automatic meeting prompts
+- **Blazing Fast Transcription**: ~10s to transcribe a 1-hour meeting
+- **Local & Private**: No audio leaves your machine (FluidAudio runs offline)
+- **Auto-generated Notes**: Summary, decisions, and action items via Claude
+- **Notion Export**: Saves formatted notes directly to your Notion workspace
+- **Calendar Integration**: Auto-prompts you when meetings start
 
 ## Requirements
 
-> **macOS only.** Windows and Linux are not supported.
+> **macOS 14+ (Apple Silicon) Only.**
+> FluidAudio relies on the Apple Neural Engine and Swift/CoreML optimizations.
 
-- **macOS 12+** (Apple Silicon recommended)
+- **macOS 14+**
+- **Apple Silicon** (M1/M2/M3/M4)
 - Python 3.10+
 - [uv](https://github.com/astral-sh/uv) - Python package manager
 - [Claude Code](https://docs.anthropic.com/en/docs/claude-code) - CLI access to Claude
-- Local Whisper server (e.g., [VoiceMode](https://github.com/mbailey/voicemode))
 - Notion account (optional, for auto-saving)
 - Google account (optional, for calendar monitoring)
 
@@ -50,19 +53,12 @@ npm install -g @anthropic-ai/claude-code
 claude  # Follow auth prompts
 ```
 
-### 3. Set up local Whisper
+### 3. Setup FluidAudio
 
-The easiest way is using [VoiceMode](https://github.com/nicobrenner/voicemode):
+Clone the FluidAudio repository. Kumbuka will automatically compile the binary on first run.
 
 ```bash
-# Install VoiceMode
-uv tool install voicemode
-
-# Download Whisper model and start server
-voicemode start-service whisper
-
-# Auto-start on boot (macOS)
-voicemode enable-service whisper
+git clone https://github.com/FluidInference/FluidAudio.git ~/FluidAudio
 ```
 
 ### 4. Install Kumbuka
@@ -86,15 +82,14 @@ If you use Claude Code with the Notion MCP server:
    ```
 
 2. **Connect your Meetings page** to Claude Code:
-
    - Open your Meetings page in Notion
    - Click ••• → Connections → Add "Claude" (or your MCP integration name)
 
-3. **Set environment variables**:
+3. **Configure Environment**:
+   Add the following to `~/.kumbuka/kumbuka.env`:
    ```bash
-   # Add to your shell profile (~/.zshrc)
-   export KUMBUKA_NOTION_URL="https://www.notion.so/Your-Meetings-Page-abc123"
-   export KUMBUKA_NOTION_MODE="mcp"
+   KUMBUKA_NOTION_URL="https://www.notion.so/Your-Meetings-Page-abc123"
+   KUMBUKA_NOTION_MODE="mcp"
    ```
 
 #### Option B: Token Integration (for standalone use)
@@ -102,37 +97,30 @@ If you use Claude Code with the Notion MCP server:
 If you prefer using a Notion API token directly:
 
 1. **Create a Notion integration** at https://www.notion.so/profile/integrations
-
    - Click "New integration"
    - Give it a name (e.g., "Kumbuka")
    - Copy the "Internal Integration Secret" (starts with `ntn_`)
 
 2. **Connect your Meetings page** to the integration
-
    - Open your Meetings page in Notion
    - Click ••• → Connections → Add your integration
 
-3. **Set environment variables**:
+3. **Configure Environment**:
+   Add the following to `~/.kumbuka/kumbuka.env`:
    ```bash
-   # Add to your shell profile (~/.zshrc)
-   export NOTION_TOKEN="ntn_YOUR_TOKEN_HERE"
-   export KUMBUKA_NOTION_URL="https://www.notion.so/Your-Meetings-Page-abc123"
-   export KUMBUKA_NOTION_MODE="token"  # This is the default
+   NOTION_TOKEN="ntn_YOUR_TOKEN_HERE"
+   KUMBUKA_NOTION_URL="https://www.notion.so/Your-Meetings-Page-abc123"
+   KUMBUKA_NOTION_MODE="token"  # This is the default
    ```
 
 #### After configuration
 
-1. **Reload your shell**:
+**If using calendar monitor**, re-enable to pick up new settings:
 
-   ```bash
-   source ~/.zshrc
-   ```
-
-2. **If using calendar monitor**, re-enable to pick up new settings:
-   ```bash
-   kumbuka monitor disable
-   kumbuka monitor enable
-   ```
+```bash
+kumbuka monitor disable
+kumbuka monitor enable
+```
 
 Without these variables, notes are displayed in the terminal only.
 
@@ -145,6 +133,10 @@ kumbuka recover   # Recover interrupted recording
 ```
 
 Audio is saved incrementally every 10 seconds, so if the process is interrupted, you can recover with `kumbuka recover`.
+
+### First Run Note
+
+The first time you run `kumbuka`, it will build the FluidAudio binary. This takes about a minute. Subsequent runs are instant.
 
 ## Auto-Record Calendar Meetings
 
@@ -210,27 +202,27 @@ When a meeting is about to start:
 └─────────────────────────────────────┘
 ```
 
-### Configuration
-
-```bash
-# How many minutes before meeting to prompt (default: 2)
-export KUMBUKA_PROMPT_MINUTES="5"
-
-# Re-enable to apply changes
-kumbuka monitor enable
-```
-
 ## Configuration
 
-| Environment Variable     | Default                                         | Description                                                             |
-| ------------------------ | ----------------------------------------------- | ----------------------------------------------------------------------- |
-| `NOTION_TOKEN`           | (none)                                          | Notion integration token (starts with `ntn_`) - required for token mode |
-| `KUMBUKA_NOTION_URL`     | (none)                                          | Notion page URL for meeting notes                                       |
-| `KUMBUKA_NOTION_MODE`    | `token`                                         | Notion integration: `mcp` or `token`                                    |
-| `KUMBUKA_WHISPER_URL`    | `http://127.0.0.1:2022/v1/audio/transcriptions` | Whisper endpoint                                                        |
-| `KUMBUKA_WHISPER_CMD`    | (none)                                          | Whisper server command (for auto-restart)                               |
-| `KUMBUKA_MAX_DURATION`   | `7200`                                          | Max recording time (seconds)                                            |
-| `KUMBUKA_PROMPT_MINUTES` | `2`                                             | Minutes before meeting to prompt                                        |
+Kumbuka prioritizes configuration from `~/.kumbuka/kumbuka.env`.
+
+**Example `~/.kumbuka/kumbuka.env`:**
+
+```bash
+KUMBUKA_NOTION_URL="https://www.notion.so/My-Meetings-abc123"
+NOTION_TOKEN="ntn_..."
+KUMBUKA_PROMPT_MINUTES="5"
+```
+
+| Environment Variable            | Default        | Description                                                             |
+| ------------------------------- | -------------- | ----------------------------------------------------------------------- |
+| `NOTION_TOKEN`                  | (none)         | Notion integration token (starts with `ntn_`) - required for token mode |
+| `KUMBUKA_NOTION_URL`            | (none)         | Notion page URL for meeting notes                                       |
+| `KUMBUKA_NOTION_MODE`           | `token`        | Notion integration: `mcp` or `token`                                    |
+| `KUMBUKA_FLUIDAUDIO_REPO`       | `~/FluidAudio` | Path to FluidAudio repository                                           |
+| `KUMBUKA_MAX_RECORDING_SECONDS` | `7200`         | Max recording time (seconds)                                            |
+| `KUMBUKA_PROMPT_MINUTES`  | `2`                                             | Minutes before meeting to prompt                                        |
+| `KUMBUKA_USER_NAME`       | `Me`                                            | Your name (for transcript attribution and feedback)                     |
 
 ## Project Structure
 
@@ -240,7 +232,7 @@ kumbuka/
 │   ├── __main__.py         # CLI entry point
 │   ├── config.py           # Configuration
 │   ├── recorder.py         # Audio recording
-│   ├── transcriber.py      # Whisper integration
+│   ├── transcriber.py      # FluidAudio integration
 │   ├── processor.py        # Claude integration
 │   ├── calendar.py         # Google Calendar integration
 │   ├── notion.py           # Notion API wrapper
@@ -258,11 +250,10 @@ To customize meeting processing, edit `kumbuka/prompts/meeting.txt`.
 
 ## Troubleshooting
 
-**"Whisper not running"**
+**"FluidAudio repo not found"**
 
 ```bash
-voicemode start-service whisper
-# Check: curl http://127.0.0.1:2022/health
+git clone https://github.com/FluidInference/FluidAudio.git ~/FluidAudio
 ```
 
 **"Claude CLI not found"**
@@ -281,19 +272,6 @@ Audio is saved incrementally. Recover with:
 
 ```bash
 kumbuka recover
-```
-
-**Whisper outputs gibberish like "[ sign unzipping ]"**
-
-This is a known Whisper hallucination issue that occurs when the model gets into a degenerate state after running for extended periods. Kumbuka will auto-detect this and attempt to restart Whisper if `KUMBUKA_WHISPER_CMD` is set:
-
-```bash
-# Set your Whisper command for auto-restart
-export KUMBUKA_WHISPER_CMD="/path/to/whisper-server --host 0.0.0.0 --port 2022 --model /path/to/model.bin"
-
-# Or manually restart Whisper
-pkill -f whisper-server
-voicemode start-service whisper
 ```
 
 **Calendar monitor not prompting**

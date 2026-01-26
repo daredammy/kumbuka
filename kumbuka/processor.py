@@ -4,7 +4,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from .config import PROMPTS_DIR, NOTION_URL, NOTION_MODE
+from .config import PROMPTS_DIR, NOTION_URL, NOTION_MODE, USER_NAME
 
 
 def find_claude() -> str | None:
@@ -106,7 +106,8 @@ def process_with_claude(
         transcript=transcript,
         duration=duration,
         timestamp=timestamp,
-        notion_instructions=notion_instructions
+        notion_instructions=notion_instructions,
+        user_name=USER_NAME
     )
 
     # Run Claude
