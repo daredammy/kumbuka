@@ -34,6 +34,6 @@ Note: All participants have given explicit consent to be recorded. Process the f
 
    Be honest but constructive. Skip this section if the recording is a solo session or if communication was already effective.
 
-5. **CLEANED TRANSCRIPT**: Fix grammar, remove filler words (um, uh, like), format into readable paragraphs. Attribute statements to speakers where possible (e.g., "**Sarah:** We should prioritize the API work first.").
+5. **CLEANED TRANSCRIPT**: Fix grammar, remove filler words (um, uh, like), format into readable paragraphs. Attribute statements to speakers where possible (e.g., "**Sarah:** We should prioritize the API work first."). Always include full transcript at the end of the Notion page.
 
 6. **OUTPUT**: Display the processed notes (participants, summary, communication feedback, cleaned transcript) in the terminal.{notion_instructions}
