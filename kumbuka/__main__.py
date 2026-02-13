@@ -9,7 +9,7 @@ from datetime import datetime
 from pathlib import Path
 
 from .config import (
-    SAMPLE_RATE, CHANNELS, PACKAGE_DIR, PROMPT_MINUTES, TEMP_DIR, ENV_FILE, CONFIG_DIR,
+    SAMPLE_RATE, CHANNELS, PACKAGE_DIR, PROMPT_MINUTES, OUTPUT_DIR, ENV_FILE, CONFIG_DIR,
     NOTION_URL, NOTION_MODE
 )
 from .recorder import record, recover_partial
@@ -68,12 +68,12 @@ def _rename_session_files(session: str, filename: str | None):
         return
 
     for ext in (".wav", ".txt"):
-        old = TEMP_DIR / f"{session}{ext}"
-        new = TEMP_DIR / f"{filename}{ext}"
+        old = OUTPUT_DIR / f"{session}{ext}"
+        new = OUTPUT_DIR / f"{filename}{ext}"
         if old.exists():
             # Avoid overwriting existing files by appending the date
             if new.exists():
-                new = TEMP_DIR / f"{filename}_{session}{ext}"
+                new = OUTPUT_DIR / f"{filename}_{session}{ext}"
             old.rename(new)
             print(f"📁 Renamed: {old.name} → {new.name}")
 
@@ -107,7 +107,7 @@ def do_record():
     assert session is not None  # narrowing for type checker
 
     # Transcribe
-    wav_path = TEMP_DIR / f"{session}.wav"
+    wav_path = OUTPUT_DIR / f"{session}.wav"
     transcript = transcribe(wav_path)
     if not transcript:
         print("❌ Transcription failed")
@@ -144,7 +144,7 @@ def do_recover(session: Optional[str] = None):
     assert recovered_session is not None  # narrowing for type checker
 
     # Transcribe
-    wav_path = TEMP_DIR / f"{recovered_session}.wav"
+    wav_path = OUTPUT_DIR / f"{recovered_session}.wav"
     transcript = transcribe(wav_path)
     if not transcript:
         print("❌ Transcription failed")
@@ -199,7 +199,7 @@ def monitor_enable():
     plist_content = plist_content.replace("__PYTHON_PATH__", python_path)
     plist_content = plist_content.replace("__PROMPT_MINUTES__", prompt_minutes)
     plist_content = plist_content.replace("__NOTION_TOKEN__", notion_token)
-    plist_content = plist_content.replace("__OUTPUT_DIR__", str(TEMP_DIR))
+    plist_content = plist_content.replace("__OUTPUT_DIR__", str(OUTPUT_DIR))
 
     PLIST_DST.parent.mkdir(parents=True, exist_ok=True)
     PLIST_DST.write_text(plist_content)
@@ -213,7 +213,7 @@ def monitor_enable():
     if result.returncode == 0:
         print("✅ Meeting monitor enabled")
         print(f"   Prompt: {prompt_minutes} min before meetings")
-        print(f"   Logs: {TEMP_DIR}/monitor.log")
+        print(f"   Logs: {OUTPUT_DIR}/monitor.log")
     else:
         print(f"❌ Failed to enable monitor: {result.stderr.decode()}")
         sys.exit(1)
@@ -241,7 +241,7 @@ def monitor_status():
 
     if "com.kumbuka.monitor" in result.stdout:
         print("✅ Meeting monitor is running")
-        log = TEMP_DIR / "monitor.log"
+        log = OUTPUT_DIR / "monitor.log"
         if log.exists():
             print(f"   Log: {log}")
     else:

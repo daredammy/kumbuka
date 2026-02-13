@@ -10,7 +10,7 @@ from datetime import datetime
 import numpy as np
 import sounddevice as sd
 
-from .config import SAMPLE_RATE, CHANNELS, MAX_DURATION, TEMP_DIR
+from .config import SAMPLE_RATE, CHANNELS, MAX_DURATION, OUTPUT_DIR
 
 
 # Module state
@@ -82,8 +82,8 @@ def _save_incremental(session: str, final: bool = False):
     if not wav_bytes:
         return
 
-    partial_path = TEMP_DIR / f"{session}.partial.wav"
-    final_path = TEMP_DIR / f"{session}.wav"
+    partial_path = OUTPUT_DIR / f"{session}.partial.wav"
+    final_path = OUTPUT_DIR / f"{session}.wav"
 
     # Write to partial file
     partial_path.write_bytes(wav_bytes)
@@ -106,21 +106,21 @@ def recover_partial(session: str | None = None) -> tuple[bytes | None, str | Non
     Returns:
         tuple: (wav_bytes, session_id) or (None, None) if no partial found
     """
-    TEMP_DIR.mkdir(parents=True, exist_ok=True)
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
     if session:
-        partial_path = TEMP_DIR / f"{session}.partial.wav"
+        partial_path = OUTPUT_DIR / f"{session}.partial.wav"
         if partial_path.exists():
             wav_bytes = partial_path.read_bytes()
             # Rename to final
-            final_path = TEMP_DIR / f"{session}.wav"
+            final_path = OUTPUT_DIR / f"{session}.wav"
             partial_path.rename(final_path)
             print(f"🔄 Recovered: {final_path}")
             return wav_bytes, session
         return None, None
 
     # Find most recent partial
-    partials = sorted(TEMP_DIR.glob("*.partial.wav"),
+    partials = sorted(OUTPUT_DIR.glob("*.partial.wav"),
                       key=lambda p: p.stat().st_mtime, reverse=True)
     if not partials:
         print("ℹ️  No partial recordings found")
@@ -131,7 +131,7 @@ def recover_partial(session: str | None = None) -> tuple[bytes | None, str | Non
     wav_bytes = partial_path.read_bytes()
 
     # Rename to final
-    final_path = TEMP_DIR / f"{session}.wav"
+    final_path = OUTPUT_DIR / f"{session}.wav"
     partial_path.rename(final_path)
 
     # Duration: bytes / (sample_rate * bytes_per_sample * channels)
@@ -158,7 +158,7 @@ def record() -> tuple[bytes | None, str | None]:
     with _chunks_lock:
         _chunks = []
 
-    TEMP_DIR.mkdir(parents=True, exist_ok=True)
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     session = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
     # Set up signal handler
@@ -213,7 +213,7 @@ def record() -> tuple[bytes | None, str | None]:
         if not _chunks:
             print("❌ No audio recorded")
             # Clean up any partial file
-            partial = TEMP_DIR / f"{session}.partial.wav"
+            partial = OUTPUT_DIR / f"{session}.partial.wav"
             if partial.exists():
                 partial.unlink()
             return None, None

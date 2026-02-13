@@ -10,10 +10,10 @@ import subprocess
 import json
 from datetime import datetime
 
-from kumbuka.config import TEMP_DIR, PROMPT_MINUTES
+from kumbuka.config import OUTPUT_DIR, PROMPT_MINUTES
 
-LOG_FILE = TEMP_DIR / "monitor.log"
-PROMPTED_FILE = TEMP_DIR / "prompted_meetings.json"
+LOG_FILE = OUTPUT_DIR / "monitor.log"
+PROMPTED_FILE = OUTPUT_DIR / "prompted_meetings.json"
 
 
 def log(msg: str):
@@ -25,9 +25,9 @@ def log(msg: str):
 
 def is_recording_in_progress() -> bool:
     """Check if kumbuka is currently recording (has a .partial.wav file)."""
-    if not TEMP_DIR.exists():
+    if not OUTPUT_DIR.exists():
         return False
-    return any(TEMP_DIR.glob("*.partial.wav"))
+    return any(OUTPUT_DIR.glob("*.partial.wav"))
 
 
 def load_prompted() -> set:
