@@ -102,8 +102,9 @@ def do_record():
 
     # Record
     wav, session = record()
-    if not wav:
+    if not wav or not session:
         sys.exit(1)
+    assert session is not None  # narrowing for type checker
 
     # Transcribe
     wav_path = TEMP_DIR / f"{session}.wav"
