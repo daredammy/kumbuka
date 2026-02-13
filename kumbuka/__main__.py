@@ -62,6 +62,28 @@ def check_requirements() -> bool:
     return True
 
 
+def _run_with_retry(label: str, fn, *args, **kwargs):
+    """Run a function with retry-on-failure prompt.
+
+    On failure, asks user to [r]etry, [s]kip, or [q]uit.
+    Returns the function result, or None if skipped.
+    """
+    while True:
+        try:
+            return fn(*args, **kwargs)
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            print(f"\n⚠️  {label} failed: {e}")
+            while True:
+                choice = input("   [r]etry / [s]kip / [q]uit? ").strip().lower()
+                if choice in ("r", "retry"):
+                    print(f"🔄 Retrying {label}...")
+                    break
+                if choice in ("s", "skip"):
+                    return None
+                if choice in ("q", "quit"):
+                    sys.exit(1)
+
+
 def _rename_session_files(session: str, filename: str | None):
     """Rename session .wav and .txt files to a descriptive name."""
     if not filename:
@@ -87,12 +109,8 @@ def _save_to_notion(result: dict):
 
     title = result.get("title", "Untitled Meeting")
     content = format_notes(result)
-
-    try:
-        page = create_page(NOTION_URL, title, content)
-        print(f"📝 Notion page: {page['url']}")
-    except Exception as e:  # pylint: disable=broad-exception-caught
-        print(f"⚠️  Notion page creation failed: {e}")
+    page = create_page(NOTION_URL, title, content)
+    print(f"📝 Notion page: {page['url']}")
 
 
 def do_record():
@@ -118,7 +136,9 @@ def do_record():
     duration_secs = len(wav) / (SAMPLE_RATE * 2 * CHANNELS)
     m, s = divmod(int(duration_secs), 60)
 
-    result = process_with_claude(
+    result = _run_with_retry(
+        "Claude processing",
+        process_with_claude,
         transcript=transcript,
         duration=f"{m}m {s}s",
         timestamp=datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -127,7 +147,7 @@ def do_record():
     if result:
         filename = sanitize_filename(result.get("filename", ""))
         _rename_session_files(session, filename)
-        _save_to_notion(result)
+        _run_with_retry("Notion page creation", _save_to_notion, result)
 
     print("\n✅ Done!")
 
@@ -155,7 +175,9 @@ def do_recover(session: Optional[str] = None):
     duration_secs = len(wav) / (SAMPLE_RATE * 2 * CHANNELS)
     m, s = divmod(int(duration_secs), 60)
 
-    result = process_with_claude(
+    result = _run_with_retry(
+        "Claude processing",
+        process_with_claude,
         transcript=transcript,
         duration=f"{m}m {s}s",
         timestamp=datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -164,7 +186,7 @@ def do_recover(session: Optional[str] = None):
     if result:
         filename = sanitize_filename(result.get("filename", ""))
         _rename_session_files(recovered_session, filename)
-        _save_to_notion(result)
+        _run_with_retry("Notion page creation", _save_to_notion, result)
 
     print("\n✅ Recovery complete!")
 
