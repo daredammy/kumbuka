@@ -9,11 +9,12 @@ from datetime import datetime
 from pathlib import Path
 
 from .config import (
-    SAMPLE_RATE, CHANNELS, PACKAGE_DIR, PROMPT_MINUTES, TEMP_DIR, ENV_FILE, CONFIG_DIR
+    SAMPLE_RATE, CHANNELS, PACKAGE_DIR, PROMPT_MINUTES, TEMP_DIR, ENV_FILE, CONFIG_DIR,
+    NOTION_URL, NOTION_MODE
 )
 from .recorder import record, recover_partial
 from .transcriber import transcribe, check_fluidaudio
-from .processor import process_with_claude, find_claude
+from .processor import process_with_claude, find_claude, sanitize_filename, format_notes
 
 
 # Valid config keys and their env var names
@@ -61,6 +62,39 @@ def check_requirements() -> bool:
     return True
 
 
+def _rename_session_files(session: str, filename: str | None):
+    """Rename session .wav and .txt files to a descriptive name."""
+    if not filename:
+        return
+
+    for ext in (".wav", ".txt"):
+        old = TEMP_DIR / f"{session}{ext}"
+        new = TEMP_DIR / f"{filename}{ext}"
+        if old.exists():
+            # Avoid overwriting existing files by appending the date
+            if new.exists():
+                new = TEMP_DIR / f"{filename}_{session}{ext}"
+            old.rename(new)
+            print(f"📁 Renamed: {old.name} → {new.name}")
+
+
+def _save_to_notion(result: dict):
+    """Create a Notion page from structured output (token mode only)."""
+    if not NOTION_URL or NOTION_MODE != "token":
+        return
+
+    from .notion import create_page
+
+    title = result.get("title", "Untitled Meeting")
+    content = format_notes(result)
+
+    try:
+        page = create_page(NOTION_URL, title, content)
+        print(f"📝 Notion page: {page['url']}")
+    except Exception as e:  # pylint: disable=broad-exception-caught
+        print(f"⚠️  Notion page creation failed: {e}")
+
+
 def do_record():
     """Main recording flow."""
     if not check_requirements():
@@ -83,11 +117,16 @@ def do_record():
     duration_secs = len(wav) / (SAMPLE_RATE * 2 * CHANNELS)
     m, s = divmod(int(duration_secs), 60)
 
-    process_with_claude(
+    result = process_with_claude(
         transcript=transcript,
         duration=f"{m}m {s}s",
         timestamp=datetime.now().strftime("%Y-%m-%d %H:%M")
     )
+
+    if result:
+        filename = sanitize_filename(result.get("filename", ""))
+        _rename_session_files(session, filename)
+        _save_to_notion(result)
 
     print("\n✅ Done!")
 
@@ -101,6 +140,7 @@ def do_recover(session: Optional[str] = None):
     if not wav or not recovered_session:
         print("❌ No partial recording to recover")
         sys.exit(1)
+    assert recovered_session is not None  # narrowing for type checker
 
     # Transcribe
     wav_path = TEMP_DIR / f"{recovered_session}.wav"
@@ -114,11 +154,16 @@ def do_recover(session: Optional[str] = None):
     duration_secs = len(wav) / (SAMPLE_RATE * 2 * CHANNELS)
     m, s = divmod(int(duration_secs), 60)
 
-    process_with_claude(
+    result = process_with_claude(
         transcript=transcript,
         duration=f"{m}m {s}s",
         timestamp=datetime.now().strftime("%Y-%m-%d %H:%M")
     )
+
+    if result:
+        filename = sanitize_filename(result.get("filename", ""))
+        _rename_session_files(recovered_session, filename)
+        _save_to_notion(result)
 
     print("\n✅ Recovery complete!")
 

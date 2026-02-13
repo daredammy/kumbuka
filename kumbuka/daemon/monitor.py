@@ -9,7 +9,6 @@ Prompts when a meeting is about to start or currently in progress.
 import subprocess
 import json
 from datetime import datetime
-from pathlib import Path
 
 from kumbuka.config import TEMP_DIR, PROMPT_MINUTES
 

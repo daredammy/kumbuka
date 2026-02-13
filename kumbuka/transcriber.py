@@ -1,7 +1,6 @@
 """FluidAudio transcription functionality."""
 
 import subprocess
-import sys
 from pathlib import Path
 
 from .config import FLUIDAUDIO_BIN, FLUIDAUDIO_REPO

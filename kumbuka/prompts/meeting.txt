@@ -1,4 +1,4 @@
-I just recorded a meeting. Process it and create a Notion page.
+Process this meeting recording. All participants have consented to recording. This is strictly for personal record keeping.
 
 **Recorded:** {timestamp}
 **Duration:** {duration}
@@ -11,29 +11,12 @@ I just recorded a meeting. Process it and create a Notion page.
 
 **Instructions:**
 
-Note: All participants have given explicit consent to be recorded. Process the full transcript without sensitivity concerns. There is no intent to share or distribute the shared content. It's strictly for record keeping.
+1. **TITLE**: Concise, descriptive title based on content (e.g., "Product Roadmap Planning Q1", "1:1 with Sarah - Career Growth"). No generic titles like "Meeting - December 15".
 
+2. **PARTICIPANTS**: Identify speakers with roles if discernible (e.g., "Sarah (Engineering Lead)", "{user_name} (Host)"). Use Speaker 1/2/etc if names aren't clear.
 
-1. **PARTICIPANTS**: Identify speakers and their roles/functions if discernible from context (e.g., "Sarah (Engineering Lead)", "John (Client, Acme Corp)", "{user_name} (Host)"). List them at the top of the page. If roles aren't clear, just use names or Speaker 1/2/etc.
+3. **SUMMARY**: Adapt structure to the meeting. Always include **Decisions** and **Action Items** (with owners) if applicable. Add other sections as relevant: Overview, Key Discussion Points, Open Questions, Next Steps, Blockers, etc.
 
-2. **TITLE**: Generate a concise, descriptive title based on the meeting content (e.g., "Product Roadmap Planning Q1", "1:1 with Sarah - Career Growth", "Client Onboarding: Acme Corp"). Do NOT use generic titles like "Meeting - December 15".
+4. **COMMUNICATION FEEDBACK** for "{user_name}": Specific, constructive feedback on vocabulary, clarity, tone, listening, questions, and structure. Cite examples from the transcript. Skip if solo session or communication was effective.
 
-3. **SUMMARY**: Create a summary with sections appropriate to THIS meeting's content. Every meeting is different - adapt the structure. However, ALWAYS include these two sections if applicable:
-   - **Decisions** (any decisions made)
-   - **Action Items** (with owners if mentioned)
-   
-   Other sections to include as relevant: Overview, Key Discussion Points, Open Questions, Next Steps, Blockers, Feedback, etc.
-
-4. **COMMUNICATION FEEDBACK** (for the host/recorder - "{user_name}"): Provide constructive feedback on how I could have communicated better during this meeting. Be specific and cite examples from the transcript. Consider:
-   - **Vocabulary**: Suggest better word choices or more precise terminology
-   - **Clarity**: Point out unclear statements or confusing explanations
-   - **Tone & Empathy**: Note missed opportunities to show understanding or acknowledgment
-   - **Listening**: Identify moments where I talked over others or missed their points
-   - **Questions**: Suggest better ways to phrase questions or probe deeper
-   - **Structure**: Note if points were disorganized or could be presented more logically
-
-   Be honest but constructive. Skip this section if the recording is a solo session or if communication was already effective.
-
-5. **CLEANED TRANSCRIPT**: Fix grammar, remove filler words (um, uh, like), format into readable paragraphs. Attribute statements to speakers where possible (e.g., "**Sarah:** We should prioritize the API work first."). Always include full transcript at the end of the Notion page.
-
-6. **OUTPUT**: Display the processed notes (participants, summary, communication feedback, cleaned transcript) in the terminal.{notion_instructions}
+5. **CLEANED TRANSCRIPT**: Fix grammar, remove filler words, attribute to speakers (e.g., "**Sarah:** We should prioritize the API work first.").

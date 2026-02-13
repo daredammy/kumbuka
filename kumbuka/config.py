@@ -21,10 +21,10 @@ FLUIDAUDIO_BIN = Path(FLUIDAUDIO_REPO) / ".build/release/fluidaudio"
 # Notion (optional) - if set, notes are saved to Notion
 NOTION_URL = os.getenv("KUMBUKA_NOTION_URL", "")
 
-# Notion integration mode: "mcp" (Claude Code MCP) or "token" (API token)
-# MCP requires Notion MCP to be connected in Claude Code
-# Token requires NOTION_TOKEN environment variable
-NOTION_MODE = os.getenv("KUMBUKA_NOTION_MODE", "token")
+# Notion integration mode: "token" (API token) or "mcp" (Claude MCP integration)
+# Falls back to "mcp" automatically if NOTION_TOKEN is not set
+_configured_mode = os.getenv("KUMBUKA_NOTION_MODE", "token")
+NOTION_MODE = _configured_mode if (_configured_mode == "mcp" or os.getenv("NOTION_TOKEN")) else "mcp"
 
 # Recording
 MAX_DURATION = int(os.getenv("KUMBUKA_MAX_RECORDING_SECONDS", "7200"))  # 2 hours
