@@ -16,6 +16,8 @@
         <string>__PROMPT_MINUTES__</string>
         <key>NOTION_TOKEN</key>
         <string>__NOTION_TOKEN__</string>
+        <key>KUMBUKA_OUTPUT_DIR</key>
+        <string>__OUTPUT_DIR__</string>
     </dict>
     <key>StartInterval</key>
     <integer>60</integer>
@@ -24,8 +26,8 @@
     <key>ProcessType</key>
     <string>Interactive</string>
     <key>StandardOutPath</key>
-    <string>/tmp/kumbuka/monitor.log</string>
+    <string>__OUTPUT_DIR__/monitor.log</string>
     <key>StandardErrorPath</key>
-    <string>/tmp/kumbuka/monitor.err</string>
+    <string>__OUTPUT_DIR__/monitor.err</string>
 </dict>
 </plist>

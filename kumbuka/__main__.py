@@ -9,11 +9,24 @@ from datetime import datetime
 from pathlib import Path
 
 from .config import (
-    SAMPLE_RATE, CHANNELS, PACKAGE_DIR, PROMPT_MINUTES, TEMP_DIR
+    SAMPLE_RATE, CHANNELS, PACKAGE_DIR, PROMPT_MINUTES, TEMP_DIR, ENV_FILE, CONFIG_DIR
 )
 from .recorder import record, recover_partial
 from .transcriber import transcribe, check_fluidaudio
 from .processor import process_with_claude, find_claude
+
+
+# Valid config keys and their env var names
+CONFIG_KEYS = {
+    "output_dir": "KUMBUKA_OUTPUT_DIR",
+    "fluidaudio_repo": "KUMBUKA_FLUIDAUDIO_REPO",
+    "notion_url": "KUMBUKA_NOTION_URL",
+    "notion_mode": "KUMBUKA_NOTION_MODE",
+    "notion_token": "NOTION_TOKEN",
+    "max_recording_seconds": "KUMBUKA_MAX_RECORDING_SECONDS",
+    "prompt_minutes": "KUMBUKA_PROMPT_MINUTES",
+    "user_name": "KUMBUKA_USER_NAME",
+}
 
 
 PLIST_NAME = "com.kumbuka.monitor.plist"
@@ -140,6 +153,7 @@ def monitor_enable():
     plist_content = plist_content.replace("__PYTHON_PATH__", python_path)
     plist_content = plist_content.replace("__PROMPT_MINUTES__", prompt_minutes)
     plist_content = plist_content.replace("__NOTION_TOKEN__", notion_token)
+    plist_content = plist_content.replace("__OUTPUT_DIR__", str(TEMP_DIR))
 
     PLIST_DST.parent.mkdir(parents=True, exist_ok=True)
     PLIST_DST.write_text(plist_content)
@@ -153,7 +167,7 @@ def monitor_enable():
     if result.returncode == 0:
         print("✅ Meeting monitor enabled")
         print(f"   Prompt: {prompt_minutes} min before meetings")
-        print("   Logs: /tmp/kumbuka/monitor.log")
+        print(f"   Logs: {TEMP_DIR}/monitor.log")
     else:
         print(f"❌ Failed to enable monitor: {result.stderr.decode()}")
         sys.exit(1)
@@ -181,7 +195,7 @@ def monitor_status():
 
     if "com.kumbuka.monitor" in result.stdout:
         print("✅ Meeting monitor is running")
-        log = Path("/tmp/kumbuka/monitor.log")
+        log = TEMP_DIR / "monitor.log"
         if log.exists():
             print(f"   Log: {log}")
     else:
@@ -248,6 +262,82 @@ def calendar_test():
         print("  (none)")
 
 
+def _read_env_file() -> dict[str, str]:
+    """Read key=value pairs from the env file."""
+    values = {}
+    if ENV_FILE.exists():
+        for line in ENV_FILE.read_text(encoding="utf-8").splitlines():
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+            if "=" in stripped:
+                key, _, val = stripped.partition("=")
+                values[key.strip()] = val.strip().strip('"')
+    return values
+
+
+def _write_env_value(env_var: str, value: str):
+    """Set a value in the env file, preserving comments and other keys."""
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+
+    lines = []
+    found = False
+    if ENV_FILE.exists():
+        for line in ENV_FILE.read_text(encoding="utf-8").splitlines():
+            stripped = line.strip()
+            if stripped and not stripped.startswith("#") and "=" in stripped:
+                key = stripped.partition("=")[0].strip()
+                if key == env_var:
+                    lines.append(f'{env_var}="{value}"')
+                    found = True
+                    continue
+            lines.append(line)
+
+    if not found:
+        lines.append(f'{env_var}="{value}"')
+
+    ENV_FILE.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def config_set(key: str, value: str):
+    """Set a config value."""
+    if key not in CONFIG_KEYS:
+        print(f"Unknown config key: {key}")
+        print(f"Valid keys: {', '.join(sorted(CONFIG_KEYS))}")
+        sys.exit(1)
+
+    env_var = CONFIG_KEYS[key]
+    _write_env_value(env_var, value)
+    print(f"Set {key} = {value}")
+
+
+def config_get(key: str):
+    """Get a config value."""
+    if key not in CONFIG_KEYS:
+        print(f"Unknown config key: {key}")
+        print(f"Valid keys: {', '.join(sorted(CONFIG_KEYS))}")
+        sys.exit(1)
+
+    env_var = CONFIG_KEYS[key]
+    values = _read_env_file()
+    value = values.get(env_var)
+    if value:
+        print(value)
+    else:
+        print(f"{key} is not set")
+
+
+def config_list():
+    """List all config values."""
+    values = _read_env_file()
+    for key, env_var in sorted(CONFIG_KEYS.items()):
+        value = values.get(env_var, "")
+        if value:
+            print(f"  {key} = {value}")
+        else:
+            print(f"  {key} (not set)")
+
+
 def print_usage():
     """Print usage information."""
     print("""
@@ -262,6 +352,11 @@ Calendar:
   kumbuka calendar auth       Authenticate with Google Calendar
   kumbuka calendar list       List your calendars
   kumbuka calendar test       Show current/upcoming meetings
+
+Config:
+  kumbuka config              Show all settings
+  kumbuka config get <key>    Get a setting
+  kumbuka config set <key> <value>  Set a setting
 
 Monitor:
   kumbuka monitor enable      Auto-prompt when meetings start
@@ -302,6 +397,22 @@ def main():
             calendar_test()
         else:
             print(f"Unknown calendar command: {cmd}")
+            sys.exit(1)
+    elif args[0] == "config":
+        if len(args) < 2:
+            config_list()
+        elif args[1] == "set":
+            if len(args) < 4:
+                print("Usage: kumbuka config set <key> <value>")
+                sys.exit(1)
+            config_set(args[2], " ".join(args[3:]))
+        elif args[1] == "get":
+            if len(args) < 3:
+                print("Usage: kumbuka config get <key>")
+                sys.exit(1)
+            config_get(args[2])
+        else:
+            print(f"Unknown config command: {args[1]}")
             sys.exit(1)
     elif args[0] == "monitor":
         if len(args) < 2:

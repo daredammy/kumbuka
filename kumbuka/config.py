@@ -12,7 +12,7 @@ load_dotenv(ENV_FILE, override=True)
 # Paths
 PACKAGE_DIR = Path(__file__).parent
 PROMPTS_DIR = PACKAGE_DIR / "prompts"
-TEMP_DIR = Path("/tmp/kumbuka")
+TEMP_DIR = Path(os.getenv("KUMBUKA_OUTPUT_DIR", "/tmp/kumbuka"))
 
 # FluidAudio
 FLUIDAUDIO_REPO = os.getenv("KUMBUKA_FLUIDAUDIO_REPO", os.path.expanduser("~/FluidAudio"))

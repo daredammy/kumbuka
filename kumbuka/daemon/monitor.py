@@ -13,8 +13,8 @@ from pathlib import Path
 
 from kumbuka.config import TEMP_DIR, PROMPT_MINUTES
 
-LOG_FILE = Path("/tmp/kumbuka/monitor.log")
-PROMPTED_FILE = Path("/tmp/kumbuka/prompted_meetings.json")
+LOG_FILE = TEMP_DIR / "monitor.log"
+PROMPTED_FILE = TEMP_DIR / "prompted_meetings.json"
 
 
 def log(msg: str):
