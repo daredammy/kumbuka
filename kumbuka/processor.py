@@ -105,10 +105,11 @@ def _run_claude_structured(
     claude: str, prompt: str
 ) -> dict | None:
     """Run Claude with stream-json + json-schema, stream progress, return structured output."""
-    env = {**os.environ, "CLAUDECODE": ""}  # cspell:ignore CLAUDECODE
+    env = {k: v for k, v in os.environ.items(
+    ) if k != "CLAUDECODE"}  # cspell:ignore CLAUDECODE
     with subprocess.Popen(
         [
-            claude, "-p", prompt,
+            claude, "--verbose", "-p", prompt,
             "--output-format", "stream-json",
             "--json-schema", OUTPUT_SCHEMA,
         ],
@@ -144,7 +145,8 @@ def _run_claude_structured(
         if proc.returncode != 0:
             assert proc.stderr is not None
             stderr = proc.stderr.read()
-            raise subprocess.CalledProcessError(proc.returncode, claude, stderr)
+            raise subprocess.CalledProcessError(
+                proc.returncode, claude, stderr)
 
     return structured_output
 
