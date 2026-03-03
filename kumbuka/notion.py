@@ -83,9 +83,10 @@ def create_page(
         }
     }
 
-    # Add content blocks if provided
-    if content:
-        payload["children"] = _text_to_blocks(content)
+    # Add first chunk of content blocks if provided (Notion limit: 100 per request)
+    blocks = _text_to_blocks(content) if content else []
+    if blocks:
+        payload["children"] = blocks[:100]
 
     response = httpx.post(
         f"{NOTION_API_URL}/pages",
@@ -97,7 +98,23 @@ def create_page(
     if response.status_code != 200:
         raise RuntimeError(f"Notion API error: {response.status_code} - {response.text}")
 
-    return response.json()
+    result = response.json()
+
+    # Append remaining blocks in chunks of 100
+    if len(blocks) > 100:
+        page_uuid = result["id"]
+        for i in range(100, len(blocks), 100):
+            chunk = blocks[i:i + 100]
+            chunk_response = httpx.patch(
+                f"{NOTION_API_URL}/blocks/{page_uuid}/children",
+                headers=headers,
+                json={"children": chunk},
+                timeout=30.0
+            )
+            if chunk_response.status_code != 200:
+                raise RuntimeError(f"Notion API error: {chunk_response.status_code} - {chunk_response.text}")
+
+    return result
 
 
 def append_blocks(
@@ -125,21 +142,32 @@ def append_blocks(
         "Content-Type": "application/json",
     }
 
-    payload = {
-        "children": _text_to_blocks(content)
-    }
+    blocks = _text_to_blocks(content)
+    result = None
 
-    response = httpx.patch(
-        f"{NOTION_API_URL}/blocks/{page_uuid}/children",
-        headers=headers,
-        json=payload,
-        timeout=30.0
-    )
+    for i in range(0, len(blocks), 100):
+        chunk = blocks[i:i + 100]
+        response = httpx.patch(
+            f"{NOTION_API_URL}/blocks/{page_uuid}/children",
+            headers=headers,
+            json={"children": chunk},
+            timeout=30.0
+        )
+        if response.status_code != 200:
+            raise RuntimeError(f"Notion API error: {response.status_code} - {response.text}")
+        result = response.json()
 
-    if response.status_code != 200:
-        raise RuntimeError(f"Notion API error: {response.status_code} - {response.text}")
+    return result or {}
 
-    return response.json()
+
+def _rich_text(text: str) -> list:
+    """Split text into Notion rich_text spans (2000-char API limit per item)."""
+    if not text:
+        return [{"type": "text", "text": {"content": ""}}]
+    return [
+        {"type": "text", "text": {"content": text[i:i + 2000]}}
+        for i in range(0, len(text), 2000)
+    ]
 
 
 def _text_to_blocks(content: str) -> list:
@@ -154,7 +182,7 @@ def _text_to_blocks(content: str) -> list:
     """
     blocks = []
     lines = content.split("\n")
-    current_paragraph = []
+    current_paragraph: list = []
 
     def flush_paragraph():
         if current_paragraph:
@@ -162,9 +190,7 @@ def _text_to_blocks(content: str) -> list:
             if text:
                 blocks.append({
                     "type": "paragraph",
-                    "paragraph": {
-                        "rich_text": [{"type": "text", "text": {"content": text}}]
-                    }
+                    "paragraph": {"rich_text": _rich_text(text)}
                 })
             current_paragraph.clear()
 
@@ -187,9 +213,7 @@ def _text_to_blocks(content: str) -> list:
             flush_paragraph()
             blocks.append({
                 "type": "heading_3",
-                "heading_3": {
-                    "rich_text": [{"type": "text", "text": {"content": stripped[4:]}}]
-                }
+                "heading_3": {"rich_text": _rich_text(stripped[4:])}
             })
             continue
 
@@ -197,9 +221,7 @@ def _text_to_blocks(content: str) -> list:
             flush_paragraph()
             blocks.append({
                 "type": "heading_2",
-                "heading_2": {
-                    "rich_text": [{"type": "text", "text": {"content": stripped[3:]}}]
-                }
+                "heading_2": {"rich_text": _rich_text(stripped[3:])}
             })
             continue
 
@@ -207,9 +229,7 @@ def _text_to_blocks(content: str) -> list:
             flush_paragraph()
             blocks.append({
                 "type": "heading_1",
-                "heading_1": {
-                    "rich_text": [{"type": "text", "text": {"content": stripped[2:]}}]
-                }
+                "heading_1": {"rich_text": _rich_text(stripped[2:])}
             })
             continue
 
@@ -218,9 +238,7 @@ def _text_to_blocks(content: str) -> list:
             flush_paragraph()
             blocks.append({
                 "type": "bulleted_list_item",
-                "bulleted_list_item": {
-                    "rich_text": [{"type": "text", "text": {"content": stripped[2:]}}]
-                }
+                "bulleted_list_item": {"rich_text": _rich_text(stripped[2:])}
             })
             continue
 
@@ -230,7 +248,7 @@ def _text_to_blocks(content: str) -> list:
             blocks.append({
                 "type": "to_do",
                 "to_do": {
-                    "rich_text": [{"type": "text", "text": {"content": stripped[6:]}}],
+                    "rich_text": _rich_text(stripped[6:]),
                     "checked": False
                 }
             })
@@ -241,7 +259,7 @@ def _text_to_blocks(content: str) -> list:
             blocks.append({
                 "type": "to_do",
                 "to_do": {
-                    "rich_text": [{"type": "text", "text": {"content": stripped[6:]}}],
+                    "rich_text": _rich_text(stripped[6:]),
                     "checked": True
                 }
             })
