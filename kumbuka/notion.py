@@ -117,6 +117,105 @@ def create_page(
     return result
 
 
+def get_blocks(
+    page_id: str,
+    token: Optional[str] = None
+) -> list:
+    """
+    Fetch all blocks from a page (handles pagination).
+
+    Returns:
+        List of raw Notion block objects
+    """
+    token = token or get_token()
+    page_uuid = extract_page_id(page_id)
+
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Notion-Version": NOTION_VERSION,
+    }
+
+    blocks = []
+    cursor = None
+    while True:
+        params = {"page_size": 100}
+        if cursor:
+            params["start_cursor"] = cursor
+
+        response = httpx.get(
+            f"{NOTION_API_URL}/blocks/{page_uuid}/children",
+            headers=headers,
+            params=params,
+            timeout=30.0
+        )
+        if response.status_code != 200:
+            raise RuntimeError(f"Notion API error: {response.status_code} - {response.text}")
+
+        data = response.json()
+        blocks.extend(data.get("results", []))
+
+        if not data.get("has_more"):
+            break
+        cursor = data.get("next_cursor")
+
+    return blocks
+
+
+def append_raw_blocks(
+    page_id: str,
+    blocks: list,
+    token: Optional[str] = None
+) -> None:
+    """Append pre-built Notion block objects to a page in chunks of 100."""
+    token = token or get_token()
+    page_uuid = extract_page_id(page_id)
+
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Notion-Version": NOTION_VERSION,
+        "Content-Type": "application/json",
+    }
+
+    # Strip server-only fields Notion rejects on write
+    _STRIP = {"id", "created_time", "last_edited_time", "created_by",
+               "last_edited_by", "has_children", "archived", "in_trash",
+               "parent", "request_id"}
+
+    def _clean(block: dict) -> dict:
+        return {k: v for k, v in block.items() if k not in _STRIP}
+
+    for i in range(0, len(blocks), 100):
+        chunk = [_clean(b) for b in blocks[i:i + 100]]
+        response = httpx.patch(
+            f"{NOTION_API_URL}/blocks/{page_uuid}/children",
+            headers=headers,
+            json={"children": chunk},
+            timeout=30.0
+        )
+        if response.status_code != 200:
+            raise RuntimeError(f"Notion API error: {response.status_code} - {response.text}")
+
+
+def delete_blocks(
+    block_ids: list,
+    token: Optional[str] = None
+) -> None:
+    """Delete a list of blocks by ID."""
+    token = token or get_token()
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Notion-Version": NOTION_VERSION,
+    }
+    for block_id in block_ids:
+        response = httpx.delete(
+            f"{NOTION_API_URL}/blocks/{block_id}",
+            headers=headers,
+            timeout=30.0
+        )
+        if response.status_code not in (200, 404):
+            raise RuntimeError(f"Notion API error: {response.status_code} - {response.text}")
+
+
 def append_blocks(
     page_id: str,
     content: str,
