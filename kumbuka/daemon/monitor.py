@@ -2,17 +2,17 @@
 """
 Kumbuka Meeting Monitor
 
-Detects meetings via Google Calendar and prompts to record.
-Prompts when a meeting is about to start or currently in progress.
+Detects meetings via Calendar scraper and auto-records or prompts to record.
 """
 
 import subprocess
 import json
 from datetime import datetime
 
-from kumbuka.config import OUTPUT_DIR, PROMPT_MINUTES
+from kumbuka.config import OUTPUT_DIR, LOG_DIR, PROMPT_MINUTES, AUTO_RECORD, BUFFER_MINUTES
+from kumbuka.runtime import find_python
 
-LOG_FILE = OUTPUT_DIR / "monitor.log"
+LOG_FILE = LOG_DIR / "monitor.log"
 PROMPTED_FILE = OUTPUT_DIR / "prompted_meetings.json"
 
 
@@ -37,7 +37,7 @@ def load_prompted() -> set:
             data = json.loads(PROMPTED_FILE.read_text(encoding="utf-8"))
             cutoff = datetime.now().timestamp() - 86400  # 24 hours
             return {k for k, v in data.items() if v > cutoff}
-        except Exception:  # pylint: disable=broad-exception-caught
+        except Exception:
             pass
     return set()
 
@@ -51,7 +51,7 @@ def save_prompted(prompted: set):
 
 def show_record_dialog(title: str) -> bool:
     """Show dialog asking if user wants to record."""
-    safe_title = title.replace('"', '\\"').replace("'", "'")
+    safe_title = title.replace('"', '\\"').replace("'", "\u2019")
 
     script = f'''
 tell application "System Events"
@@ -59,7 +59,7 @@ tell application "System Events"
     set msg to "Meeting: {safe_title}" & return & return
     set msg to msg & "Would you like to record?"
 
-    set dialogResult to display dialog msg buttons {{"Skip", "Record"}} ¬
+    set dialogResult to display dialog msg buttons {{"Skip", "Record"}} \u00ac
         default button "Record" with title "Kumbuka" giving up after 30
 
     if button returned of dialogResult is "Record" then
@@ -79,12 +79,12 @@ end tell
             check=False
         )
         return result.stdout.strip() == "yes"
-    except Exception:  # pylint: disable=broad-exception-caught
+    except Exception:
         return False
 
 
-def start_recording():
-    """Launch kumbuka in a new Terminal window."""
+def start_recording_in_terminal():
+    """Launch kumbuka in a new Terminal window (dialog mode)."""
     script = '''
 tell application "Terminal"
     activate
@@ -94,64 +94,82 @@ end tell
     subprocess.run(["osascript", "-e", script], check=False)
 
 
-def check_calendar():
-    """Check Google Calendar for upcoming/current meetings."""
-    try:
-        from kumbuka.calendar import (
-            is_authenticated,
-            get_upcoming_events,
-            get_current_meetings,
-        )
+def start_auto_recording(event):
+    """Start headless recording for meeting duration + buffer."""
+    from datetime import timezone as tz
 
-        if not is_authenticated():
-            log("Not authenticated with Google Calendar")
-            return False
+    now = datetime.now(tz.utc)
+    # Convert event.end to UTC-aware if needed
+    event_end = event.end
+    if event_end.tzinfo is None:
+        event_end = event_end.replace(tzinfo=tz.utc)
+    elif event_end.tzinfo != tz.utc:
+        event_end = event_end.astimezone(tz.utc)
+
+    remaining = (event_end - now).total_seconds()
+    buffer = BUFFER_MINUTES * 60
+    duration = max(int(remaining + buffer), 300)  # minimum 5 min
+
+    python_path = find_python()
+    auto_log = LOG_DIR / "auto_record.log"
+    auto_log.parent.mkdir(parents=True, exist_ok=True)
+
+    log(f"Starting auto-record: {event.title} (duration={duration}s)")
+    subprocess.Popen(
+        [python_path, "-m", "kumbuka", "record-only", "--duration", str(duration)],
+        stdout=open(auto_log, "a"),
+        stderr=subprocess.STDOUT,
+    )
+
+
+def check_calendar():
+    """Check calendar and auto-record or prompt if meeting found."""
+    try:
+        from kumbuka.calendar_scraper import get_upcoming_events, get_current_meetings
+        from kumbuka.meeting_filter import should_record
 
         prompted = load_prompted()
 
-        # Check for meetings starting soon
-        upcoming = get_upcoming_events(PROMPT_MINUTES)
-        for event in upcoming:
+        events = get_upcoming_events(PROMPT_MINUTES) + get_current_meetings()
+
+        for event in events:
             if event.id in prompted:
+                continue
+
+            if not should_record(event):
+                log(f"Skipping: {event.title}")
+                prompted.add(event.id)
+                save_prompted(prompted)
                 continue
 
             prompted.add(event.id)
             save_prompted(prompted)
 
-            log(f"Meeting starting soon: {event.title}")
-            if show_record_dialog(f"{event.title} (starting soon)"):
-                start_recording()
+            if AUTO_RECORD:
+                log(f"Auto-recording: {event.title}")
+                start_auto_recording(event)
                 return True
+            else:
+                log(f"Meeting detected: {event.title}")
+                if show_record_dialog(f"{event.title} (starting soon)"):
+                    start_recording_in_terminal()
+                    return True
 
-        # Check for meetings currently in progress
-        current = get_current_meetings()
-        for event in current:
-            if event.id in prompted:
-                continue
-
-            prompted.add(event.id)
-            save_prompted(prompted)
-
-            log(f"Meeting in progress: {event.title}")
-            if show_record_dialog(f"{event.title} (in progress)"):
-                start_recording()
-                return True
-
-        event_count = len(upcoming) + len(current)
+        event_count = len(events)
         if event_count > 0:
-            log(f"Checked - {event_count} events, all already prompted")
+            log(f"Checked - {event_count} events, all already prompted or skipped")
         else:
             log("Checked - no meetings")
 
         return False
 
-    except Exception as e:  # pylint: disable=broad-exception-caught
+    except Exception as e:
         log(f"Calendar check error: {e}")
         return False
 
 
 def main():
-    """Entry point for daemon - checks Google Calendar."""
+    """Entry point for daemon."""
     if is_recording_in_progress():
         log("Recording in progress - skipping")
         return

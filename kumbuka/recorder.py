@@ -142,12 +142,16 @@ def recover_partial(session: str | None = None) -> tuple[bytes | None, str | Non
     return wav_bytes, session
 
 
-def record() -> tuple[bytes | None, str | None]:
+def record(duration_secs: int | None = None) -> tuple[bytes | None, str | None]:
     """
     Record audio from microphone until Ctrl+C or max duration.
 
     Audio is saved incrementally to disk every few seconds, so even if
     the process is killed, you won't lose more than a few seconds of audio.
+
+    Args:
+        duration_secs: Optional fixed recording duration in seconds.
+                       Clamped to MAX_DURATION. Ctrl+C still stops early.
 
     Returns:
         tuple: (wav_bytes, session_id) or (None, None) if no audio
@@ -169,9 +173,16 @@ def record() -> tuple[bytes | None, str | None]:
             with _chunks_lock:
                 _chunks.append(indata.copy())
 
+    effective_max = min(duration_secs, MAX_DURATION) if duration_secs else MAX_DURATION
+
     play_start_tone()
-    print("\n🎙️  RECORDING STARTED")
-    print("   Press Ctrl+C to stop\n")
+    if duration_secs:
+        dm, ds = divmod(effective_max, 60)
+        print(f"\n🎙️  RECORDING STARTED ({dm}m {ds}s)")
+        print("   Press Ctrl+C to stop early\n")
+    else:
+        print("\n🎙️  RECORDING STARTED")
+        print("   Press Ctrl+C to stop\n")
 
     last_save_time = time.time()
 
@@ -194,13 +205,22 @@ def record() -> tuple[bytes | None, str | None]:
                     _save_incremental(session)
                     last_save_time = time.time()
 
-                if elapsed >= MAX_DURATION:
-                    print("\r   ⏱️  Max duration reached        ")
+                if elapsed >= effective_max:
+                    if duration_secs:
+                        print("\r   ⏱️  Duration reached              ")
+                    else:
+                        print("\r   ⏱️  Max duration reached        ")
                     break
 
-                m, s = divmod(elapsed, 60)
-                dot = "🔴" if int(time.time() * 2) % 2 == 0 else "⚫"
-                print(f"\r   {dot} {m:02d}:{s:02d}", end="", flush=True)
+                if duration_secs:
+                    remaining = max(0, effective_max - elapsed)
+                    rm, rs = divmod(remaining, 60)
+                    dot = "🔴" if int(time.time() * 2) % 2 == 0 else "⚫"
+                    print(f"\r   {dot} Recording: {rm:02d}:{rs:02d} remaining", end="", flush=True)
+                else:
+                    m, s = divmod(elapsed, 60)
+                    dot = "🔴" if int(time.time() * 2) % 2 == 0 else "⚫"
+                    print(f"\r   {dot} {m:02d}:{s:02d}", end="", flush=True)
 
     finally:
         # Restore old signal handler

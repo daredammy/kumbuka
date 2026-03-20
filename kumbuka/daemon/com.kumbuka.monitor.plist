@@ -14,10 +14,12 @@
     <dict>
         <key>KUMBUKA_PROMPT_MINUTES</key>
         <string>__PROMPT_MINUTES__</string>
-        <key>NOTION_TOKEN</key>
-        <string>__NOTION_TOKEN__</string>
         <key>KUMBUKA_OUTPUT_DIR</key>
         <string>__OUTPUT_DIR__</string>
+        <key>KUMBUKA_AUTO_RECORD</key>
+        <string>__AUTO_RECORD__</string>
+        <key>KUMBUKA_BUFFER_MINUTES</key>
+        <string>__BUFFER_MINUTES__</string>
     </dict>
     <key>StartInterval</key>
     <integer>60</integer>
@@ -26,8 +28,8 @@
     <key>ProcessType</key>
     <string>Interactive</string>
     <key>StandardOutPath</key>
-    <string>__OUTPUT_DIR__/monitor.log</string>
+    <string>__LOG_DIR__/monitor.log</string>
     <key>StandardErrorPath</key>
-    <string>__OUTPUT_DIR__/monitor.err</string>
+    <string>__LOG_DIR__/monitor.err</string>
 </dict>
 </plist>

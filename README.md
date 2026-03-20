@@ -14,7 +14,8 @@ It uses **FluidAudio** (wrapping NVIDIA's Parakeet TDT model) for transcription,
 - **Local & Private**: No audio leaves your machine (FluidAudio runs offline)
 - **Auto-generated Notes**: Summary, decisions, and action items via Claude
 - **Notion Export**: Saves formatted notes directly to your Notion workspace
-- **Calendar Integration**: Auto-prompts you when meetings start
+- **Auto-Record**: Detects meetings from Google Calendar and records automatically
+- **Smart Filtering**: Skips personal time, focus blocks, and holidays — records real meetings
 
 ## Requirements
 
@@ -23,11 +24,11 @@ It uses **FluidAudio** (wrapping NVIDIA's Parakeet TDT model) for transcription,
 
 - **macOS 14+**
 - **Apple Silicon** (M1/M2/M3/M4)
-- Python 3.10+
+- Python 3.11+
 - [uv](https://github.com/astral-sh/uv) - Python package manager
 - [Claude Code](https://docs.anthropic.com/en/docs/claude-code) - CLI access to Claude
+- Google Chrome with Google Calendar signed in (for auto-record)
 - Notion account (optional, for auto-saving)
-- Google account (optional, for calendar monitoring)
 
 ## macOS Permissions
 
@@ -37,6 +38,12 @@ Kumbuka requires these permissions in **System Settings → Privacy & Security**
 | ------------------------- | -------------------------------- | --------------------------------- |
 | **Microphone**            | Record audio                     | First time you run `kumbuka`      |
 | **Automation → Terminal** | Open Terminal to start recording | When you click "Record" on prompt |
+
+Additionally, enable in Chrome:
+
+| Setting                                    | Why                          |
+| ------------------------------------------ | ---------------------------- |
+| **View → Developer → Allow JavaScript from Apple Events** | Calendar event scraping |
 
 ## Installation
 
@@ -127,9 +134,10 @@ Without these variables, notes are displayed in the terminal only.
 ## Usage
 
 ```bash
-kumbuka           # Start recording (Ctrl+C to stop)
-kumbuka -h        # Show all commands
-kumbuka recover   # Recover interrupted recording
+kumbuka                              # Start recording (Ctrl+C to stop)
+kumbuka record-only --duration 3600  # Record for exactly 1 hour, then exit
+kumbuka -h                           # Show all commands
+kumbuka recover                      # Recover interrupted recording
 ```
 
 Audio is saved incrementally every 10 seconds, so if the process is interrupted, you can recover with `kumbuka recover`.
@@ -140,31 +148,44 @@ The first time you run `kumbuka`, it will build the FluidAudio binary. This take
 
 ## Auto-Record Calendar Meetings
 
-Kumbuka can watch your Google Calendar and prompt you when meetings are about to start.
+Kumbuka watches Google Calendar in Chrome and automatically records meetings.
 
 ### How it works
 
-1. `kumbuka calendar auth` authenticates with Google Calendar via OAuth
+1. `kumbuka calendar setup` checks Chrome and Calendar access
 2. `kumbuka monitor enable` installs a **LaunchAgent** (`~/Library/LaunchAgents/com.kumbuka.monitor.plist`)
 3. macOS runs this agent every 60 seconds, even after restarts
-4. It queries Google Calendar directly via API
-5. When a meeting starts in 2 minutes, you see a dialog prompt
-6. Click "Record" → opens Terminal and starts recording
+4. It scrapes Google Calendar events from Chrome's DOM via AppleScript
+5. Smart filtering decides what to record: skips personal time, records real meetings
+6. When a recordable meeting starts, headless recording begins automatically
+7. Recording stops after `meeting_end + 10 minutes` (configurable)
+
+### Meeting Filter
+
+Events are classified using deterministic rules, with Claude (Haiku) as fallback for ambiguous cases:
+
+| Always Record | Always Skip | Claude Decides |
+| --- | --- | --- |
+| 1:1s, syncs, standups | All-day events | Ambiguous titles |
+| Interviews, reviews | Lunch, gym, focus time | No participants listed |
+| Meetings with participants | Holidays, OOO, travel | Everything else |
+| Demos, retrospectives | Busy blocks, DND | |
 
 ### Setup
 
 ```bash
-# 1. Download OAuth credentials from Google Cloud Console
-#    (Create project → Enable Calendar API → Create OAuth credentials)
-#    Save as ~/.kumbuka/credentials.json
+# 1. Enable JavaScript from Apple Events in Chrome
+#    Chrome → View → Developer → Allow JavaScript from Apple Events
 
-# 2. Authenticate with Google Calendar
-kumbuka calendar auth
+# 2. Make sure you're logged into Google Calendar in Chrome
 
-# 3. Test that it works
+# 3. Check setup
+kumbuka calendar setup
+
+# 4. Test that it works
 kumbuka calendar test
 
-# 4. Enable calendar monitoring (survives restarts)
+# 5. Enable calendar monitoring (survives restarts)
 kumbuka monitor enable
 
 # Check status
@@ -174,33 +195,7 @@ kumbuka monitor status
 kumbuka monitor disable
 ```
 
-### Google Cloud Setup
-
-To use Google Calendar integration:
-
-1. Go to [Google Cloud Console](https://console.cloud.google.com/)
-2. Create a new project (or use existing)
-3. Enable the **Google Calendar API**
-4. Go to **Credentials** → Create **OAuth 2.0 Client ID**
-   - Application type: Desktop app
-   - Download the JSON file
-5. Save as `~/.kumbuka/credentials.json`
-6. Run `kumbuka calendar auth` to complete OAuth flow
-
-### Dialog prompt
-
-When a meeting is about to start:
-
-```
-┌─────────────────────────────────────┐
-│ Meeting: Weekly Standup             │
-│ (starting soon)                     │
-│                                     │
-│ Would you like to record?           │
-│                                     │
-│         [Skip]    [Record]          │
-└─────────────────────────────────────┘
-```
+No Google Cloud project, no OAuth credentials, no API keys.
 
 ## Configuration
 
@@ -212,6 +207,8 @@ Kumbuka prioritizes configuration from `~/.kumbuka/kumbuka.env`.
 KUMBUKA_NOTION_URL="https://www.notion.so/My-Meetings-abc123"
 NOTION_TOKEN="ntn_..."
 KUMBUKA_PROMPT_MINUTES="5"
+KUMBUKA_AUTO_RECORD="true"
+KUMBUKA_BUFFER_MINUTES="10"
 ```
 
 | Environment Variable            | Default        | Description                                                             |
@@ -219,10 +216,12 @@ KUMBUKA_PROMPT_MINUTES="5"
 | `NOTION_TOKEN`                  | (none)         | Notion integration token (starts with `ntn_`) - required for token mode |
 | `KUMBUKA_NOTION_URL`            | (none)         | Notion page URL for meeting notes                                       |
 | `KUMBUKA_NOTION_MODE`           | `token`        | Notion integration: `mcp` or `token`                                    |
-| `KUMBUKA_FLUIDAUDIO_REPO`       | `~/FluidAudio` | Path to FluidAudio repository                                           |
+| `KUMBUKA_FLUIDAUDIO_REPO`       | `~/FluidAudio` | Path to FluidAudio repository                                          |
 | `KUMBUKA_MAX_RECORDING_SECONDS` | `7200`         | Max recording time (seconds)                                            |
-| `KUMBUKA_PROMPT_MINUTES`  | `2`                                             | Minutes before meeting to prompt                                        |
-| `KUMBUKA_USER_NAME`       | `Me`                                            | Your name (for transcript attribution and feedback)                     |
+| `KUMBUKA_PROMPT_MINUTES`        | `2`            | Minutes before meeting to detect                                        |
+| `KUMBUKA_AUTO_RECORD`           | `true`         | Auto-record meetings (`true`) or show dialog prompt (`false`)           |
+| `KUMBUKA_BUFFER_MINUTES`        | `10`           | Minutes to keep recording after meeting ends                            |
+| `KUMBUKA_USER_NAME`             | `Me`           | Your name (for transcript attribution and feedback)                     |
 
 ## Project Structure
 
@@ -234,7 +233,9 @@ kumbuka/
 │   ├── recorder.py         # Audio recording
 │   ├── transcriber.py      # FluidAudio integration
 │   ├── processor.py        # Claude integration
-│   ├── calendar.py         # Google Calendar integration
+│   ├── calendar_scraper.py # Google Calendar scraping via Chrome
+│   ├── meeting_filter.py   # Smart meeting classification
+│   ├── runtime.py          # Executable discovery helpers
 │   ├── notion.py           # Notion API wrapper
 │   ├── prompts/
 │   │   └── meeting.txt     # ← The prompt (easy to customize!)
@@ -249,6 +250,18 @@ kumbuka/
 To customize meeting processing, edit `kumbuka/prompts/meeting.txt`.
 
 ## Troubleshooting
+
+**"Chrome is not running"**
+
+Start Google Chrome and make sure you're logged into Google Calendar.
+
+**"Not authenticated"**
+
+Log into Google Calendar at `calendar.google.com` in Chrome, then run:
+
+```bash
+kumbuka calendar setup
+```
 
 **"FluidAudio repo not found"**
 
@@ -274,13 +287,12 @@ Audio is saved incrementally. Recover with:
 kumbuka recover
 ```
 
-**Calendar monitor not prompting**
+**Calendar monitor not prompting / not auto-recording**
 
 1. Check it's running: `kumbuka monitor status`
-2. Check logs: `cat /tmp/kumbuka/monitor.log`
-3. Verify Google Calendar auth: `kumbuka calendar test`
-4. If "Not authenticated": `kumbuka calendar auth`
-5. Check credentials file exists: `ls ~/.kumbuka/credentials.json`
+2. Check logs: `cat ~/.kumbuka/recordings/monitor.log`
+3. Verify Chrome has Calendar open: `kumbuka calendar test`
+4. Verify Chrome JS permissions: View → Developer → Allow JavaScript from Apple Events
 
 **Calendar monitor stopped after restart**
 
@@ -288,10 +300,6 @@ The LaunchAgent should survive restarts automatically. If it doesn't:
 
 - Re-enable: `kumbuka monitor enable`
 - Check LaunchAgent: `launchctl list | grep kumbuka`
-
-**Dialog not appearing**
-
-- Grant Terminal access to System Events in Privacy & Security → Automation
 
 ## Contributing
 

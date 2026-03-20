@@ -1,18 +1,17 @@
 """Kumbuka CLI entry point."""
 
 from typing import Optional
-import os
 import sys
 import subprocess
-import shutil
 from datetime import datetime
 from pathlib import Path
 
 from .config import (
-    SAMPLE_RATE, CHANNELS, PACKAGE_DIR, PROMPT_MINUTES, OUTPUT_DIR, ENV_FILE, CONFIG_DIR,
-    NOTION_URL, NOTION_MODE
+    SAMPLE_RATE, CHANNELS, PACKAGE_DIR, PROMPT_MINUTES, OUTPUT_DIR, LOG_DIR, ENV_FILE, CONFIG_DIR,
+    NOTION_URL, NOTION_MODE, AUTO_RECORD, BUFFER_MINUTES
 )
 from .recorder import record, recover_partial
+from .runtime import find_python
 from .transcriber import transcribe, check_fluidaudio
 from .processor import process_with_claude, find_claude, sanitize_filename, format_notes
 
@@ -27,6 +26,9 @@ CONFIG_KEYS = {
     "max_recording_seconds": "KUMBUKA_MAX_RECORDING_SECONDS",
     "prompt_minutes": "KUMBUKA_PROMPT_MINUTES",
     "user_name": "KUMBUKA_USER_NAME",
+    "auto_record": "KUMBUKA_AUTO_RECORD",
+    "buffer_minutes": "KUMBUKA_BUFFER_MINUTES",
+    "log_dir": "KUMBUKA_LOG_DIR",
 }
 
 
@@ -191,51 +193,38 @@ def do_recover(session: Optional[str] = None):
     print("\n✅ Recovery complete!")
 
 
-def find_python() -> str:
-    """Find python that has kumbuka installed."""
-    # Try uv's tool python first
-    uv_python = Path.home() / ".local/share/uv/tools/kumbuka/bin/python"
-    if uv_python.exists():
-        return str(uv_python)
-
-    # Fall back to which python
-    python = shutil.which("python3") or shutil.which("python")
-    return python or "/usr/bin/python3"
-
-
 def monitor_enable():
-    """Enable meeting monitor daemon (Google Calendar)."""
-    from .calendar import is_authenticated
+    """Enable meeting monitor daemon."""
+    from .runtime import find_python
 
-    if not is_authenticated():
-        print("❌ Not authenticated with Google Calendar")
-        print("   Run: kumbuka calendar auth")
-        sys.exit(1)
-
-    # Create plist with correct paths and env vars
     python_path = find_python()
     prompt_minutes = str(PROMPT_MINUTES)
-    notion_token = os.getenv("NOTION_TOKEN", "")
+    auto_record = "true" if AUTO_RECORD else "false"
+    buffer_minutes = str(BUFFER_MINUTES)
 
     plist_content = PLIST_SRC.read_text()
     plist_content = plist_content.replace("__PYTHON_PATH__", python_path)
     plist_content = plist_content.replace("__PROMPT_MINUTES__", prompt_minutes)
-    plist_content = plist_content.replace("__NOTION_TOKEN__", notion_token)
     plist_content = plist_content.replace("__OUTPUT_DIR__", str(OUTPUT_DIR))
+    plist_content = plist_content.replace("__LOG_DIR__", str(LOG_DIR))
+    plist_content = plist_content.replace("__AUTO_RECORD__", auto_record)
+    plist_content = plist_content.replace("__BUFFER_MINUTES__", buffer_minutes)
 
     PLIST_DST.parent.mkdir(parents=True, exist_ok=True)
     PLIST_DST.write_text(plist_content)
 
-    # Load the agent
     subprocess.run(["launchctl", "unload", str(PLIST_DST)],
                    capture_output=True, check=False)
     result = subprocess.run(["launchctl", "load", str(
         PLIST_DST)], capture_output=True, check=False)
 
     if result.returncode == 0:
-        print("✅ Meeting monitor enabled")
+        mode = "auto-record" if AUTO_RECORD else "prompt"
+        print(f"✅ Meeting monitor enabled ({mode} mode)")
         print(f"   Prompt: {prompt_minutes} min before meetings")
-        print(f"   Logs: {OUTPUT_DIR}/monitor.log")
+        if AUTO_RECORD:
+            print(f"   Buffer: {buffer_minutes} min after meeting end")
+        print(f"   Logs: {LOG_DIR}")
     else:
         print(f"❌ Failed to enable monitor: {result.stderr.decode()}")
         sys.exit(1)
@@ -263,7 +252,7 @@ def monitor_status():
 
     if "com.kumbuka.monitor" in result.stdout:
         print("✅ Meeting monitor is running")
-        log = OUTPUT_DIR / "monitor.log"
+        log = LOG_DIR / "monitor.log"
         if log.exists():
             print(f"   Log: {log}")
     else:
@@ -271,52 +260,54 @@ def monitor_status():
         print("   Enable with: kumbuka monitor enable")
 
 
-def calendar_auth():
-    """Authenticate with Google Calendar."""
-    from .calendar import authenticate, CREDENTIALS_FILE
+def calendar_setup():
+    """Check Chrome JS permissions and open Calendar for authentication."""
+    import subprocess as _sp
+    from .calendar_scraper import ensure_kumbuka_calendar_tab, is_authenticated, _run_js_in_tab
 
-    if not CREDENTIALS_FILE.exists():
-        print(f"❌ Credentials file not found at {CREDENTIALS_FILE}")
-        print("   Download OAuth credentials from Google Cloud Console.")
+    print("Checking Chrome setup for calendar integration...")
+
+    tab = ensure_kumbuka_calendar_tab()
+    if tab is None:
+        print("❌ Google Chrome is not running")
+        print("   Start Chrome and try again")
         sys.exit(1)
 
-    print("Opening browser for Google Calendar authentication...")
+    print("✅ Chrome is running and Calendar tab is ready")
+
+    # Test JS execution permission
+    wid, tidx = tab
     try:
-        authenticate()
-        print("✅ Successfully authenticated with Google Calendar!")
-        print("   You can now use: kumbuka calendar list")
-    except Exception as e:  # pylint: disable=broad-exception-caught
-        print(f"❌ Authentication failed: {e}")
+        _run_js_in_tab("document.title", wid, tidx)
+        print("✅ JavaScript from Apple Events is enabled")
+    except _sp.CalledProcessError:
+        print("❌ JavaScript from Apple Events is NOT enabled")
+        print("   Enable: Chrome → View → Developer → Allow JavaScript from Apple Events")
         sys.exit(1)
 
+    if is_authenticated():
+        print("✅ Authenticated with Google Calendar")
+    else:
+        print("⚠️  Not logged into Google Calendar in Chrome")
+        print("   Log in at calendar.google.com, then re-run this command")
 
-def calendar_list():
-    """List available calendars."""
-    from .calendar import is_authenticated, list_calendars
-
-    if not is_authenticated():
-        print("❌ Not authenticated. Run: kumbuka calendar auth")
-        sys.exit(1)
-
-    print("Your calendars:")
-    for cal in list_calendars():
-        print(f"  - {cal['name']}")
-        print(f"    ID: {cal['id']}")
+    print("\n✅ Setup complete! Test with: kumbuka calendar test")
 
 
 def calendar_test():
-    """Test calendar by showing upcoming events."""
-    from .calendar import is_authenticated, get_upcoming_events, get_current_meetings
+    """Test calendar by showing upcoming events from Chrome."""
+    from .calendar_scraper import get_upcoming_events, get_current_meetings, is_authenticated
 
     if not is_authenticated():
-        print("❌ Not authenticated. Run: kumbuka calendar auth")
+        print("❌ Not authenticated. Run: kumbuka calendar setup")
         sys.exit(1)
 
     print("Current meetings:")
     current = get_current_meetings()
     if current:
         for event in current:
-            print(f"  🔴 {event.title} ({event.calendar_name})")
+            parts = f" ({', '.join(event.participants)})" if event.participants else ""
+            print(f"  🔴 {event.title}{parts}")
     else:
         print("  (none)")
 
@@ -324,8 +315,8 @@ def calendar_test():
     upcoming = get_upcoming_events(60)
     if upcoming:
         for event in upcoming:
-            print(
-                f"  📅 {event.title} @ {event.start.strftime('%H:%M')} ({event.calendar_name})")
+            parts = f" ({', '.join(event.participants)})" if event.participants else ""
+            print(f"  📅 {event.title} @ {event.start.strftime('%H:%M')}{parts}")
     else:
         print("  (none)")
 
@@ -406,6 +397,68 @@ def config_list():
             print(f"  {key} (not set)")
 
 
+def _auto_log(msg: str):
+    """Append a timestamped line to the auto-record log."""
+    log_file = LOG_DIR / "auto_record.log"
+    log_file.parent.mkdir(parents=True, exist_ok=True)
+    with open(log_file, "a", encoding="utf-8") as f:
+        f.write(f"{datetime.now()}: {msg}\n")
+
+
+def do_record_only(duration: int):
+    """Record for a fixed duration, then transcribe and process non-interactively.
+
+    Unlike do_record(), this never prompts for input — errors are logged and
+    the pipeline continues best-effort.  Designed to run headless from the
+    monitor daemon.
+    """
+    _auto_log(f"Recording started (duration={duration}s)")
+
+    wav, session = record(duration_secs=duration)
+    if not wav or not session:
+        _auto_log("Recording failed — no audio captured")
+        sys.exit(1)
+    assert session is not None
+    _auto_log(f"Recording saved: {session}")
+
+    # Transcribe
+    wav_path = OUTPUT_DIR / f"{session}.wav"
+    try:
+        transcript = transcribe(wav_path)
+    except Exception as e:
+        _auto_log(f"Transcription failed: {e}")
+        return
+    if not transcript:
+        _auto_log(f"Transcription returned empty for {session}")
+        return
+    _auto_log(f"Transcription complete ({len(transcript)} chars)")
+
+    # Process with Claude
+    duration_secs = len(wav) / (SAMPLE_RATE * 2 * CHANNELS)
+    m, s = divmod(int(duration_secs), 60)
+    try:
+        result = process_with_claude(
+            transcript=transcript,
+            duration=f"{m}m {s}s",
+            timestamp=datetime.now().strftime("%Y-%m-%d %H:%M"),
+        )
+    except Exception as e:
+        _auto_log(f"Claude processing failed: {e}")
+        return
+    _auto_log(f"Claude processing complete: {result.get('title', 'untitled')}")
+
+    if result:
+        filename = sanitize_filename(result.get("filename", ""))
+        _rename_session_files(session, filename)
+        try:
+            _save_to_notion(result)
+            _auto_log(f"Saved to Notion: {result.get('title', 'untitled')}")
+        except Exception as e:
+            _auto_log(f"Notion save failed: {e}")
+
+    _auto_log("Pipeline complete")
+
+
 def print_usage():
     """Print usage information."""
     print("""
@@ -413,12 +466,12 @@ Kumbuka - Local-first meeting recorder
 
 Usage:
   kumbuka                     Start recording (Ctrl+C to stop)
+  kumbuka record-only --duration SECS  Record for fixed duration, then exit
   kumbuka recover             Recover last interrupted recording
   kumbuka recover <session>   Recover specific session (e.g. 2025-12-17_14-30-00)
 
 Calendar:
-  kumbuka calendar auth       Authenticate with Google Calendar
-  kumbuka calendar list       List your calendars
+  kumbuka calendar setup      Check Chrome setup for calendar integration
   kumbuka calendar test       Show current/upcoming meetings
 
 Config:
@@ -427,8 +480,8 @@ Config:
   kumbuka config set <key> <value>  Set a setting
 
 Monitor:
-  kumbuka monitor enable      Auto-prompt when meetings start
-  kumbuka monitor disable     Turn off auto-prompts
+  kumbuka monitor enable      Auto-record when meetings start
+  kumbuka monitor disable     Turn off auto-recording
   kumbuka monitor status      Check if monitor is running
   kumbuka help                Show this message
 
@@ -453,14 +506,12 @@ def main():
         do_recover(session)
     elif args[0] == "calendar":
         if len(args) < 2:
-            print("Usage: kumbuka calendar [auth|list|test]")
+            print("Usage: kumbuka calendar [setup|test]")
             sys.exit(1)
 
         cmd = args[1]
-        if cmd == "auth":
-            calendar_auth()
-        elif cmd == "list":
-            calendar_list()
+        if cmd == "setup":
+            calendar_setup()
         elif cmd == "test":
             calendar_test()
         else:
@@ -497,6 +548,19 @@ def main():
         else:
             print(f"Unknown monitor command: {cmd}")
             sys.exit(1)
+    elif args[0] == "record-only":
+        duration = None
+        for i, arg in enumerate(args[1:], 1):
+            if arg == "--duration" and i + 1 < len(args):
+                try:
+                    duration = int(args[i + 1])
+                except ValueError:
+                    print(f"Invalid duration: {args[i + 1]}")
+                    sys.exit(1)
+        if duration is None:
+            print("Usage: kumbuka record-only --duration SECONDS")
+            sys.exit(1)
+        do_record_only(duration)
     else:
         print(f"Unknown command: {args[0]}")
         print_usage()

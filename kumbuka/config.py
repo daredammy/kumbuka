@@ -13,6 +13,7 @@ load_dotenv(ENV_FILE, override=True)
 PACKAGE_DIR = Path(__file__).parent
 PROMPTS_DIR = PACKAGE_DIR / "prompts"
 OUTPUT_DIR = Path(os.getenv("KUMBUKA_OUTPUT_DIR", Path.home() / ".kumbuka" / "recordings"))
+LOG_DIR = Path(os.getenv("KUMBUKA_LOG_DIR", Path.home() / "Documents" / "kumbuka" / "logs"))
 
 # FluidAudio
 FLUIDAUDIO_REPO = os.getenv("KUMBUKA_FLUIDAUDIO_REPO", os.path.expanduser("~/FluidAudio"))
@@ -33,6 +34,12 @@ CHANNELS = 1
 
 # Calendar monitoring - minutes before meeting to prompt
 PROMPT_MINUTES = int(os.getenv("KUMBUKA_PROMPT_MINUTES", "2"))
+
+# Auto-record mode (True = auto-record without dialog; False = show dialog prompt)
+AUTO_RECORD = os.getenv("KUMBUKA_AUTO_RECORD", "true").lower() in ("true", "1", "yes")
+
+# Buffer minutes added after meeting end
+BUFFER_MINUTES = int(os.getenv("KUMBUKA_BUFFER_MINUTES", "10"))
 
 # User identification (for personalized feedback)
 USER_NAME = os.getenv("KUMBUKA_USER_NAME", "Me")
