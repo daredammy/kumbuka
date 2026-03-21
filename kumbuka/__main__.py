@@ -397,10 +397,21 @@ def config_list():
             print(f"  {key} (not set)")
 
 
+_MAX_LOG_BYTES = 5 * 1024 * 1024  # 5 MB
+
+
 def _auto_log(msg: str):
     """Append a timestamped line to the auto-record log."""
     log_file = LOG_DIR / "auto_record.log"
     log_file.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        if log_file.exists() and log_file.stat().st_size > _MAX_LOG_BYTES:
+            backup = log_file.with_suffix(".log.1")
+            if backup.exists():
+                backup.unlink()
+            log_file.rename(backup)
+    except OSError:
+        pass
     with open(log_file, "a", encoding="utf-8") as f:
         f.write(f"{datetime.now()}: {msg}\n")
 

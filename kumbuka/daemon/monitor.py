@@ -16,18 +16,52 @@ LOG_FILE = LOG_DIR / "monitor.log"
 PROMPTED_FILE = OUTPUT_DIR / "prompted_meetings.json"
 
 
+MAX_LOG_BYTES = 5 * 1024 * 1024  # 5 MB
+
+
+def _rotate_if_needed(path):
+    """Rotate log file if it exceeds MAX_LOG_BYTES. Keeps one backup."""
+    try:
+        if path.exists() and path.stat().st_size > MAX_LOG_BYTES:
+            backup = path.with_suffix(path.suffix + ".1")
+            if backup.exists():
+                backup.unlink()
+            path.rename(backup)
+    except OSError:
+        pass
+
+
 def log(msg: str):
     """Write to log file."""
     LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+    _rotate_if_needed(LOG_FILE)
     with open(LOG_FILE, "a", encoding="utf-8") as f:
         f.write(f"{datetime.now()}: {msg}\n")
 
 
+RECORDING_LOCK = OUTPUT_DIR / ".recording.lock"
+
+
 def is_recording_in_progress() -> bool:
-    """Check if kumbuka is currently recording (has a .partial.wav file)."""
+    """Check if kumbuka is currently recording.
+
+    Uses both a lock file (covers the first 10s before .partial.wav exists)
+    and the .partial.wav glob (covers the rest of the recording).
+    """
     if not OUTPUT_DIR.exists():
         return False
-    return any(OUTPUT_DIR.glob("*.partial.wav"))
+    if any(OUTPUT_DIR.glob("*.partial.wav")):
+        return True
+    if RECORDING_LOCK.exists():
+        # Stale lock? Check if the PID is still alive.
+        try:
+            import os
+            pid = int(RECORDING_LOCK.read_text().strip())
+            os.kill(pid, 0)  # signal 0 = existence check
+            return True
+        except (ValueError, OSError, ProcessLookupError):
+            RECORDING_LOCK.unlink(missing_ok=True)
+    return False
 
 
 def load_prompted() -> set:
@@ -110,16 +144,26 @@ def start_auto_recording(event):
     buffer = BUFFER_MINUTES * 60
     duration = max(int(remaining + buffer), 300)  # minimum 5 min
 
+    # Cap at MAX_DURATION to prevent runaway recordings
+    from kumbuka.config import MAX_DURATION
+    duration = min(duration, MAX_DURATION)
+
     python_path = find_python()
     auto_log = LOG_DIR / "auto_record.log"
     auto_log.parent.mkdir(parents=True, exist_ok=True)
 
     log(f"Starting auto-record: {event.title} (duration={duration}s)")
-    subprocess.Popen(
+    log_fh = open(auto_log, "a")
+    proc = subprocess.Popen(
         [python_path, "-m", "kumbuka", "record-only", "--duration", str(duration)],
-        stdout=open(auto_log, "a"),
+        stdout=log_fh,
         stderr=subprocess.STDOUT,
+        close_fds=True,
     )
+
+    # Write lock file with PID so the next monitor tick doesn't start a second recording.
+    RECORDING_LOCK.parent.mkdir(parents=True, exist_ok=True)
+    RECORDING_LOCK.write_text(str(proc.pid))
 
 
 def check_calendar():

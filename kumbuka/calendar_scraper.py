@@ -90,16 +90,22 @@ class CalendarEvent:
 # AppleScript helpers
 # ---------------------------------------------------------------------------
 
+OSASCRIPT_TIMEOUT_S = 10
+
+
 def _run_applescript(script: str) -> str:
     """Run an AppleScript via osascript and return stdout.
 
     Raises subprocess.CalledProcessError on non-zero exit.
+    Times out after OSASCRIPT_TIMEOUT_S to prevent process pile-up when
+    Chrome is unresponsive.
     """
     result = subprocess.run(
         ["osascript", "-e", script],
         capture_output=True,
         text=True,
         check=True,
+        timeout=OSASCRIPT_TIMEOUT_S,
     )
     return result.stdout.strip()
 
@@ -139,6 +145,7 @@ def _run_js_in_tab(js: str, window_id: int, tab_index: int) -> str:
         capture_output=True,
         text=True,
         check=True,
+        timeout=OSASCRIPT_TIMEOUT_S,
     )
     return proc.stdout.strip()
 
