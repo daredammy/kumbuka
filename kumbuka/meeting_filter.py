@@ -107,7 +107,7 @@ def _classify_with_claude(event: CalendarEvent) -> str:
         f'\n'
         f'Rules:\n'
         f'- RECORD: 1:1s, team meetings, standups, syncs, reviews, interviews, any meeting with other people\n'
-        f'- SKIP: personal time, busy blocks, lunch, gym, focus hours, holidays, "Do not disturb", travel time\n'
+        f'- SKIP: personal time, doctor, all day meetings, busy blocks, lunch, gym, focus hours, holidays, "Do not disturb", travel time\n'
         f'- When in doubt, RECORD\n'
         f'\n'
         f'Respond with exactly: RECORD or SKIP'
