@@ -11,7 +11,6 @@ from .config import (
     NOTION_URL, NOTION_MODE, AUTO_RECORD, BUFFER_MINUTES
 )
 from .recorder import record, recover_partial
-from .runtime import find_python
 from .transcriber import transcribe, check_fluidaudio
 from .processor import process_with_claude, find_claude, sanitize_filename, format_notes
 
