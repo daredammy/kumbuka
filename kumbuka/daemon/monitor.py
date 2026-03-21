@@ -174,7 +174,16 @@ def check_calendar():
 
         prompted = load_prompted()
 
-        events = get_upcoming_events(PROMPT_MINUTES) + get_current_meetings()
+        # Deduplicate: same event can appear in both upcoming and current lists
+        # with different IDs if the textContent varies between scrapes.
+        all_events = get_upcoming_events(PROMPT_MINUTES) + get_current_meetings()
+        seen_titles = set()
+        events = []
+        for e in all_events:
+            key = (e.title, e.start.strftime("%Y-%m-%d %H:%M"))
+            if key not in seen_titles:
+                seen_titles.add(key)
+                events.append(e)
 
         for event in events:
             if event.id in prompted:
