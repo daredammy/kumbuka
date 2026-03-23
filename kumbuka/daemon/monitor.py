@@ -7,6 +7,7 @@ Detects meetings via Calendar scraper and auto-records or prompts to record.
 
 import subprocess
 import json
+import time
 from datetime import datetime
 
 from kumbuka.config import OUTPUT_DIR, LOG_DIR, PROMPT_MINUTES, AUTO_RECORD, BUFFER_MINUTES
@@ -41,19 +42,29 @@ def log(msg: str):
 
 RECORDING_LOCK = OUTPUT_DIR / ".recording.lock"
 
+# A .partial.wav not modified in this many seconds is considered stale
+# (abandoned by a crashed recorder).
+_PARTIAL_STALE_SECONDS = 120
+
 
 def is_recording_in_progress() -> bool:
     """Check if kumbuka is currently recording.
 
     Uses both a lock file (covers the first 10s before .partial.wav exists)
     and the .partial.wav glob (covers the rest of the recording).
+    Stale artifacts from crashed recordings are ignored and cleaned up.
     """
     if not OUTPUT_DIR.exists():
         return False
-    if any(OUTPUT_DIR.glob("*.partial.wav")):
-        return True
+
+    now = time.time()
+    for partial in OUTPUT_DIR.glob("*.partial.wav"):
+        age = now - partial.stat().st_mtime
+        if age < _PARTIAL_STALE_SECONDS:
+            return True
+        log(f"Stale partial detected ({partial.name}, {age:.0f}s old) — ignoring")
+
     if RECORDING_LOCK.exists():
-        # Stale lock? Check if the PID is still alive.
         try:
             import os
             pid = int(RECORDING_LOCK.read_text().strip())
