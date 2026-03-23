@@ -7,7 +7,6 @@ Detects meetings via Calendar scraper and auto-records or prompts to record.
 
 import subprocess
 import json
-import time
 from datetime import datetime
 
 from kumbuka.config import OUTPUT_DIR, LOG_DIR, PROMPT_MINUTES, AUTO_RECORD, BUFFER_MINUTES
@@ -38,41 +37,6 @@ def log(msg: str):
     _rotate_if_needed(LOG_FILE)
     with open(LOG_FILE, "a", encoding="utf-8") as f:
         f.write(f"{datetime.now()}: {msg}\n")
-
-
-RECORDING_LOCK = OUTPUT_DIR / ".recording.lock"
-
-# A .partial.wav not modified in this many seconds is considered stale
-# (abandoned by a crashed recorder).
-_PARTIAL_STALE_SECONDS = 120
-
-
-def is_recording_in_progress() -> bool:
-    """Check if kumbuka is currently recording.
-
-    Uses both a lock file (covers the first 10s before .partial.wav exists)
-    and the .partial.wav glob (covers the rest of the recording).
-    Stale artifacts from crashed recordings are ignored and cleaned up.
-    """
-    if not OUTPUT_DIR.exists():
-        return False
-
-    now = time.time()
-    for partial in OUTPUT_DIR.glob("*.partial.wav"):
-        age = now - partial.stat().st_mtime
-        if age < _PARTIAL_STALE_SECONDS:
-            return True
-        log(f"Stale partial detected ({partial.name}, {age:.0f}s old) — ignoring")
-
-    if RECORDING_LOCK.exists():
-        try:
-            import os
-            pid = int(RECORDING_LOCK.read_text().strip())
-            os.kill(pid, 0)  # signal 0 = existence check
-            return True
-        except (ValueError, OSError, ProcessLookupError):
-            RECORDING_LOCK.unlink(missing_ok=True)
-    return False
 
 
 def load_prompted() -> set:
@@ -165,16 +129,12 @@ def start_auto_recording(event):
 
     log(f"Starting auto-record: {event.title} (duration={duration}s)")
     log_fh = open(auto_log, "a")
-    proc = subprocess.Popen(
+    subprocess.Popen(
         [python_path, "-m", "kumbuka", "record-only", "--duration", str(duration)],
         stdout=log_fh,
         stderr=subprocess.STDOUT,
         close_fds=True,
     )
-
-    # Write lock file with PID so the next monitor tick doesn't start a second recording.
-    RECORDING_LOCK.parent.mkdir(parents=True, exist_ok=True)
-    RECORDING_LOCK.write_text(str(proc.pid))
 
 
 def check_calendar():
@@ -212,12 +172,10 @@ def check_calendar():
             if AUTO_RECORD:
                 log(f"Auto-recording: {event.title}")
                 start_auto_recording(event)
-                return True
             else:
                 log(f"Meeting detected: {event.title}")
                 if show_record_dialog(f"{event.title} (starting soon)"):
                     start_recording_in_terminal()
-                    return True
 
         event_count = len(events)
         if event_count > 0:
@@ -234,10 +192,6 @@ def check_calendar():
 
 def main():
     """Entry point for daemon."""
-    if is_recording_in_progress():
-        log("Recording in progress - skipping")
-        return
-
     check_calendar()
 
 

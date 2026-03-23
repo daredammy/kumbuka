@@ -10,7 +10,6 @@ import pytest
 from kumbuka.daemon.monitor import (
     load_prompted,
     save_prompted,
-    is_recording_in_progress,
     start_auto_recording,
 )
 from kumbuka.calendar_scraper import CalendarEvent, _generate_event_id
@@ -61,18 +60,6 @@ class TestPromptedPersistence:
 
         loaded = load_prompted()
         assert "old_event" not in loaded
-
-
-class TestIsRecordingInProgress:
-
-    def test_no_partial_files(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("kumbuka.daemon.monitor.OUTPUT_DIR", tmp_path)
-        assert is_recording_in_progress() is False
-
-    def test_with_partial_file(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("kumbuka.daemon.monitor.OUTPUT_DIR", tmp_path)
-        (tmp_path / "session.partial.wav").write_bytes(b"fake")
-        assert is_recording_in_progress() is True
 
 
 class TestStartAutoRecording:
