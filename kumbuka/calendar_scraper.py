@@ -68,6 +68,10 @@ _DATE_RANGE_CROSS_MONTH_RE = re.compile(
 
 _PARTICIPANT_RE = re.compile(r"^[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+$")
 
+# Pattern to extract a date from a Google Calendar data-datekey value.
+_DATEKEY_SEPARATED_RE = re.compile(r"(\d{4})[-/](\d{1,2})[-/](\d{1,2})")
+_DATEKEY_COMPACT_RE = re.compile(r"(\d{4})(\d{2})(\d{2})")
+
 # Module-level tab reference cache.
 _tab_ref: tuple[int, int] | None = None
 
@@ -311,22 +315,81 @@ def _scrape_aria_labels(window_id: int, tab_index: int) -> list[str]:
     Prefers ``aria-label`` (schedule/day views) but falls back to
     ``textContent`` (week view) which embeds the same comma-separated
     description after the visible chip text.
+
+    In multi-day views (week, custom N-day), each label may be prefixed
+    with ``DATEKEY:<key>|||`` so the caller can determine the event's
+    actual date instead of assuming today.
     """
     js = (
-        "Array.from(document.querySelectorAll('[data-eventchip]'))"
-        ".map(el => {"
-        "  var label = el.getAttribute('aria-label');"
-        "  if (label) return label;"
-        "  var text = el.textContent.trim();"
-        # textContent in week view prepends the visible title before the
-        # description.  The description always starts with a time pattern
-        # (e.g. "10am to 11am,") or "All day,".  Extract from that point.
-        "  var m = text.match(/(\\d{1,2}(?::\\d{2})?\\s*[ap]m\\s+to\\s+|All day,)/i);"
-        "  if (m) return text.substring(m.index);"
-        "  return '';"
-        "})"
+        "(function(){"
+        # Identify today's numeric datekey from the column header button
+        # whose aria-label contains "today" (e.g. "Tuesday, March 24, today").
+        "var todayKey=null;"
+        "document.querySelectorAll('button[data-datekey]').forEach(function(btn){"
+        "var al=btn.getAttribute('aria-label')||'';"
+        "if(al.indexOf('today')>=0||al.indexOf('Today')>=0)"
+        "todayKey=parseInt(btn.dataset.datekey);"
+        "});"
+        # No "today" column → single-day view or non-standard layout.
+        # Fall back to original behaviour (no date prefix).
+        "if(todayKey===null){"
+        "return Array.from(document.querySelectorAll('[data-eventchip]'))"
+        ".map(function(el){"
+        "var label=el.getAttribute('aria-label');"
+        "if(!label){"
+        "var text=el.textContent.trim();"
+        "var m=text.match(/(\\d{1,2}(?::\\d{2})?\\s*[ap]m\\s+to\\s+|All day,)/i);"
+        "if(m)label=text.substring(m.index);"
+        "else return '';}"
+        "return label;})"
         ".filter(Boolean)"
-        ".join('\\n---KUMBUKA_SEP---\\n')"
+        ".join('\\n---KUMBUKA_SEP---\\n');}"
+        # Build column map: for each data-datekey element, compute the
+        # YYYYMMDD date string from the day-offset relative to today.
+        "var td=new Date();td.setHours(0,0,0,0);"
+        "var dkEls=document.querySelectorAll('[data-datekey]');"
+        "var colMap=[];"
+        "dkEls.forEach(function(h){"
+        "var r=h.getBoundingClientRect();"
+        "if(r.width>0){"
+        "var dk=parseInt(h.dataset.datekey);"
+        "var dt=new Date(td.getTime()+(dk-todayKey)*86400000);"
+        "var ds=''+dt.getFullYear()+('0'+(dt.getMonth()+1)).slice(-2)+('0'+dt.getDate()).slice(-2);"
+        "colMap.push({dk:dk,cx:(r.left+r.right)/2,ds:ds});"
+        "}});"
+        # Helper: walk up DOM for ancestor datekey, else position-match.
+        "function findDate(el){"
+        "var p=el.parentElement;"
+        "while(p&&p!==document.body){"
+        "if(p.dataset&&p.dataset.datekey){"
+        "var dk=parseInt(p.dataset.datekey);"
+        "var dt=new Date(td.getTime()+(dk-todayKey)*86400000);"
+        "return ''+dt.getFullYear()+('0'+(dt.getMonth()+1)).slice(-2)+('0'+dt.getDate()).slice(-2);}"
+        "p=p.parentElement;}"
+        "if(colMap.length>1){"
+        "var r=el.getBoundingClientRect();"
+        "var cx=(r.left+r.right)/2;"
+        "var best='',bd=1e9;"
+        "for(var i=0;i<colMap.length;i++){"
+        "var d=Math.abs(cx-colMap[i].cx);"
+        "if(d<bd){bd=d;best=colMap[i].ds;}}"
+        "return best;}"
+        "return '';}"
+        # Extract labels, prefixing with DATEKEY:YYYYMMDD||| when found.
+        "return Array.from(document.querySelectorAll('[data-eventchip]'))"
+        ".map(function(el){"
+        "var label=el.getAttribute('aria-label');"
+        "if(!label){"
+        "var text=el.textContent.trim();"
+        "var m=text.match(/(\\d{1,2}(?::\\d{2})?\\s*[ap]m\\s+to\\s+|All day,)/i);"
+        "if(m)label=text.substring(m.index);"
+        "else return '';}"
+        "var dk=findDate(el);"
+        "if(dk)return 'DATEKEY:'+dk+'|||'+label;"
+        "return label;})"
+        ".filter(Boolean)"
+        ".join('\\n---KUMBUKA_SEP---\\n');"
+        "})()"
     )
     try:
         raw = _run_js_in_tab(js, window_id, tab_index)
@@ -375,6 +438,26 @@ def _parse_time(time_str: str, ref_date: datetime) -> datetime:
         second=0,
         microsecond=0,
     )
+
+
+def _parse_datekey(datekey: str, tz) -> datetime | None:
+    """Parse a Google Calendar ``data-datekey`` value into a midnight datetime.
+
+    Handles ``YYYYMMDD``, ``YYYY-MM-DD``, and ``YYYY/MM/DD`` formats.
+    """
+    m = _DATEKEY_SEPARATED_RE.search(datekey)
+    if m:
+        try:
+            return datetime(int(m.group(1)), int(m.group(2)), int(m.group(3)), tzinfo=tz)
+        except ValueError:
+            pass
+    m = _DATEKEY_COMPACT_RE.search(datekey)
+    if m:
+        try:
+            return datetime(int(m.group(1)), int(m.group(2)), int(m.group(3)), tzinfo=tz)
+        except ValueError:
+            pass
+    return None
 
 
 def _generate_event_id(title: str, start: datetime, end: datetime, participants: tuple[str, ...]) -> str:
@@ -437,8 +520,12 @@ def _is_full_day_time_range(start_str: str, end_str: str) -> bool:
     return start_is_midnight and end_is_late
 
 
-def _parse_aria_label(label: str) -> CalendarEvent | None:
+def _parse_aria_label(label: str, *, datekey: str | None = None) -> CalendarEvent | None:
     """Parse a Google Calendar aria-label into a CalendarEvent.
+
+    *datekey* is an optional ``data-datekey`` value extracted from the DOM
+    that indicates which day-column the event chip belongs to. It is used
+    as a fallback when the aria-label itself does not contain a date token.
 
     Returns None if the label cannot be parsed.
     """
@@ -497,7 +584,9 @@ def _parse_aria_label(label: str) -> CalendarEvent | None:
                 date_token_end_idx = i + 1
                 break
 
-    # Fall back to today if no date token found.
+    # Fall back to DOM column date, then to today.
+    if event_date_start is None and datekey:
+        event_date_start = _parse_datekey(datekey, tz)
     if event_date_start is None:
         event_date_start = today
 
@@ -568,6 +657,10 @@ def _parse_aria_label(label: str) -> CalendarEvent | None:
 # Extraction helpers
 # ---------------------------------------------------------------------------
 
+_DATEKEY_PREFIX = "DATEKEY:"
+_DATEKEY_SEP = "|||"
+
+
 def _extract_events() -> list[CalendarEvent]:
     """Open/find the calendar tab, scrape, and parse all events."""
     ref = ensure_kumbuka_calendar_tab()
@@ -576,11 +669,20 @@ def _extract_events() -> list[CalendarEvent]:
 
     window_id, tab_index = ref
     _ensure_schedule_view(window_id, tab_index)
-    labels = _scrape_aria_labels(window_id, tab_index)
+    raw_labels = _scrape_aria_labels(window_id, tab_index)
 
     events: list[CalendarEvent] = []
-    for label in labels:
-        event = _parse_aria_label(label)
+    for raw in raw_labels:
+        datekey: str | None = None
+        label = raw
+        if raw.startswith(_DATEKEY_PREFIX):
+            rest = raw[len(_DATEKEY_PREFIX):]
+            sep_idx = rest.find(_DATEKEY_SEP)
+            if sep_idx >= 0:
+                datekey = rest[:sep_idx]
+                label = rest[sep_idx + len(_DATEKEY_SEP):]
+
+        event = _parse_aria_label(label, datekey=datekey)
         if event is not None:
             events.append(event)
         else:

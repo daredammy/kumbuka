@@ -325,8 +325,8 @@ def calendar_test():
     else:
         print("  (none)")
 
-    print("\nUpcoming meetings (next 60 min):")
-    upcoming = get_upcoming_events(60)
+    print("\nUpcoming meetings (next 5 hrs):")
+    upcoming = get_upcoming_events(300)
     if upcoming:
         for event in upcoming:
             parts = f" ({', '.join(event.participants)})" if event.participants else ""
