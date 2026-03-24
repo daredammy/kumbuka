@@ -4,7 +4,7 @@ macOS meeting recorder that transcribes locally with **FluidAudio (Parakeet TDT 
 
 ## Why
 
-Notion's built-in meeting recording requires an Enterprise subscription. Kumbuka gives you the same workflow—record, transcribe, and save to Notion—without the enterprise price tag. Everything runs locally on your Mac.
+Notion's built-in meeting recording requires an Enterprise subscription. Kumbuka gives you the same workflow—record, transcribe, and save to Notion or Obsidian—without the enterprise price tag. Everything runs locally on your Mac.
 
 It uses **FluidAudio** (wrapping NVIDIA's Parakeet TDT model) for transcription, which is **50x faster than real-time** and optimized for Apple Silicon (Neural Engine), freeing up your CPU.
 
@@ -13,7 +13,7 @@ It uses **FluidAudio** (wrapping NVIDIA's Parakeet TDT model) for transcription,
 - **Blazing Fast Transcription**: ~10s to transcribe a 1-hour meeting
 - **Local & Private**: No audio leaves your machine (FluidAudio runs offline)
 - **Auto-generated Notes**: Summary, decisions, and action items via Claude
-- **Notion Export**: Saves formatted notes directly to your Notion workspace
+- **Flexible Export**: Save formatted notes to Notion or directly into an Obsidian vault
 - **Auto-Record**: Detects meetings from Google Calendar and records automatically
 - **Smart Filtering**: Skips personal time, focus blocks, and holidays — records real meetings
 
@@ -28,7 +28,7 @@ It uses **FluidAudio** (wrapping NVIDIA's Parakeet TDT model) for transcription,
 - [uv](https://github.com/astral-sh/uv) - Python package manager
 - [Claude Code](https://docs.anthropic.com/en/docs/claude-code) - CLI access to Claude
 - Google Chrome with Google Calendar signed in (for auto-record)
-- Notion account (optional, for auto-saving)
+- Notion account or Obsidian vault (optional, for auto-saving)
 
 ## macOS Permissions
 
@@ -74,11 +74,34 @@ git clone https://github.com/FluidInference/FluidAudio.git ~/FluidAudio
 uv tool install git+https://github.com/daredammy/kumbuka
 ```
 
-### 5. Configure Notion (optional)
+### 5. Configure Notes Destination (optional)
 
-To auto-save meeting notes to Notion, choose one of two integration methods:
+Kumbuka can leave notes in the terminal only, save them to Notion, or write markdown files into an Obsidian vault.
 
-#### Option A: MCP Integration (recommended for Claude Code users)
+If `KUMBUKA_NOTES_DESTINATION` is omitted, Kumbuka keeps backward-compatible behavior:
+- `notion` when `KUMBUKA_NOTION_URL` is set
+- `obsidian` when `KUMBUKA_OBSIDIAN_VAULT` is set and Notion is not configured
+- `terminal` when neither is configured
+
+#### Option A: Obsidian vault
+
+If you want local markdown notes in Obsidian:
+
+1. **Choose a vault path** on disk:
+   - Example: `~/Documents/Obsidian`
+   - Optional: choose a folder inside the vault for meeting notes, such as `Meetings`
+
+2. **Configure Environment**:
+   Add the following to `~/.kumbuka/kumbuka.env`:
+   ```bash
+   KUMBUKA_NOTES_DESTINATION="obsidian"
+   KUMBUKA_OBSIDIAN_VAULT="~/Documents/Obsidian"
+   KUMBUKA_OBSIDIAN_FOLDER="Meetings"
+   ```
+
+Kumbuka will create markdown notes in that folder and avoid overwriting existing files by adding numeric suffixes.
+
+#### Option B: Notion MCP Integration (recommended for Claude Code users)
 
 If you use Claude Code with the Notion MCP server:
 
@@ -95,11 +118,12 @@ If you use Claude Code with the Notion MCP server:
 3. **Configure Environment**:
    Add the following to `~/.kumbuka/kumbuka.env`:
    ```bash
+   KUMBUKA_NOTES_DESTINATION="notion"
    KUMBUKA_NOTION_URL="https://www.notion.so/Your-Meetings-Page-abc123"
    KUMBUKA_NOTION_MODE="mcp"
    ```
 
-#### Option B: Token Integration (for standalone use)
+#### Option C: Notion Token Integration (for standalone use)
 
 If you prefer using a Notion API token directly:
 
@@ -115,6 +139,7 @@ If you prefer using a Notion API token directly:
 3. **Configure Environment**:
    Add the following to `~/.kumbuka/kumbuka.env`:
    ```bash
+   KUMBUKA_NOTES_DESTINATION="notion"
    NOTION_TOKEN="ntn_YOUR_TOKEN_HERE"
    KUMBUKA_NOTION_URL="https://www.notion.so/Your-Meetings-Page-abc123"
    KUMBUKA_NOTION_MODE="token"  # This is the default
@@ -129,7 +154,7 @@ kumbuka monitor disable
 kumbuka monitor enable
 ```
 
-Without these variables, notes are displayed in the terminal only.
+Without destination settings, notes are displayed in the terminal only.
 
 ## Usage
 
@@ -204,8 +229,9 @@ Kumbuka prioritizes configuration from `~/.kumbuka/kumbuka.env`.
 **Example `~/.kumbuka/kumbuka.env`:**
 
 ```bash
-KUMBUKA_NOTION_URL="https://www.notion.so/My-Meetings-abc123"
-NOTION_TOKEN="ntn_..."
+KUMBUKA_NOTES_DESTINATION="obsidian"
+KUMBUKA_OBSIDIAN_VAULT="~/Documents/Obsidian"
+KUMBUKA_OBSIDIAN_FOLDER="Meetings"
 KUMBUKA_PROMPT_MINUTES="5"
 KUMBUKA_AUTO_RECORD="true"
 KUMBUKA_BUFFER_MINUTES="10"
@@ -213,10 +239,13 @@ KUMBUKA_BUFFER_MINUTES="10"
 
 | Environment Variable            | Default        | Description                                                             |
 | ------------------------------- | -------------- | ----------------------------------------------------------------------- |
+| `KUMBUKA_NOTES_DESTINATION`     | auto-detect    | Where notes go: `terminal`, `notion`, or `obsidian`                     |
+| `KUMBUKA_OBSIDIAN_VAULT`        | (none)         | Path to your Obsidian vault root                                        |
+| `KUMBUKA_OBSIDIAN_FOLDER`       | (none)         | Optional folder inside the vault for meeting notes                      |
 | `NOTION_TOKEN`                  | (none)         | Notion integration token (starts with `ntn_`) - required for token mode |
 | `KUMBUKA_NOTION_URL`            | (none)         | Notion page URL for meeting notes                                       |
 | `KUMBUKA_NOTION_MODE`           | `token`        | Notion integration: `mcp` or `token`                                    |
-| `KUMBUKA_FLUIDAUDIO_REPO`       | `~/FluidAudio` | Path to FluidAudio repository                                          |
+| `KUMBUKA_FLUIDAUDIO_REPO`       | `~/FluidAudio` | Path to FluidAudio repository                                           |
 | `KUMBUKA_MAX_RECORDING_SECONDS` | `7200`         | Max recording time (seconds)                                            |
 | `KUMBUKA_PROMPT_MINUTES`        | `2`            | Minutes before meeting to detect                                        |
 | `KUMBUKA_AUTO_RECORD`           | `true`         | Auto-record meetings (`true`) or show dialog prompt (`false`)           |
@@ -237,6 +266,9 @@ kumbuka/
 │   ├── meeting_filter.py   # Smart meeting classification
 │   ├── runtime.py          # Executable discovery helpers
 │   ├── notion.py           # Notion API wrapper
+│   ├── obsidian.py         # Obsidian vault writer
+│   ├── notes.py            # Notes destination routing
+│   ├── render.py           # Shared markdown rendering
 │   ├── prompts/
 │   │   └── meeting.txt     # ← The prompt (easy to customize!)
 │   └── daemon/

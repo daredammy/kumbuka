@@ -7,8 +7,15 @@ import wave
 import threading
 from datetime import datetime
 
-import numpy as np
-import sounddevice as sd
+try:
+    import numpy as np
+except ModuleNotFoundError:  # pragma: no cover - optional fallback for minimal test envs
+    np = None
+
+try:
+    import sounddevice as sd
+except ModuleNotFoundError:  # pragma: no cover - optional fallback for minimal test envs
+    sd = None
 
 from .config import SAMPLE_RATE, CHANNELS, MAX_DURATION, OUTPUT_DIR
 
@@ -22,8 +29,22 @@ _chunks_lock = threading.Lock()
 SAVE_INTERVAL_SECS = 10  # Save to disk every 10 seconds
 
 
+def _require_audio_deps():
+    """Import audio dependencies lazily when recording is actually used."""
+    global np, sd  # pylint: disable=global-statement
+
+    if np is None:
+        import numpy as _np
+        np = _np
+
+    if sd is None:
+        import sounddevice as _sd
+        sd = _sd
+
+
 def _tone(freq=880, dur=0.15, vol=0.3):
     """Play a simple tone."""
+    _require_audio_deps()
     t = np.linspace(0, dur, int(SAMPLE_RATE * dur), False)
     w = np.sin(freq * 2 * np.pi * t) * vol
     env = np.ones_like(w)
@@ -53,6 +74,7 @@ def _on_signal(_sig, _frame):
 
 def _chunks_to_wav(chunks: list) -> bytes:
     """Convert audio chunks to WAV bytes."""
+    _require_audio_deps()
     if not chunks:
         return b""
     audio = np.concatenate(chunks)
@@ -157,6 +179,7 @@ def record(duration_secs: int | None = None) -> tuple[bytes | None, str | None]:
         tuple: (wav_bytes, session_id) or (None, None) if no audio
     """
     global _chunks  # pylint: disable=global-statement
+    _require_audio_deps()
 
     _stop_event.clear()
     with _chunks_lock:

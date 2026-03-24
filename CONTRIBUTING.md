@@ -19,7 +19,7 @@ kumbuka/
 
 ## Areas
 
-- **Prompts** (`kumbuka/prompts/`) - Template with placeholders: `{transcript}`, `{duration}`, `{timestamp}`, `{notion_instructions}`
+- **Prompts** (`kumbuka/prompts/`) - Template with placeholders: `{transcript}`, `{duration}`, `{timestamp}`. Destination-specific save instructions are appended in `processor.py` when needed.
 - **Recorder** (`recorder.py`) - Audio capture via `sounddevice`
 - **Transcriber** (`transcriber.py`) - Whisper API client
 - **Processor** (`processor.py`) - Claude integration
@@ -36,7 +36,7 @@ uv pip install -e .
 
 ```bash
 kumbuka
-# Optionally set KUMBUKA_NOTION_URL to test Notion integration
+# Optionally set KUMBUKA_NOTION_URL or KUMBUKA_OBSIDIAN_VAULT to test note export
 ```
 
 ## Submitting Changes

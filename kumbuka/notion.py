@@ -2,11 +2,19 @@
 
 import os
 import re
-import httpx
 from typing import Optional
 
 NOTION_API_URL = "https://api.notion.com/v1"
 NOTION_VERSION = "2022-06-28"
+
+
+def _httpx():
+    """Import httpx lazily so non-Notion tests don't require it."""
+    try:
+        import httpx
+    except ModuleNotFoundError as exc:
+        raise RuntimeError("httpx is required for Notion integration") from exc
+    return httpx
 
 
 def get_token() -> str:
@@ -74,6 +82,7 @@ def create_page(
         "Notion-Version": NOTION_VERSION,
         "Content-Type": "application/json",
     }
+    httpx = _httpx()
 
     # Build the page payload
     payload = {
@@ -134,6 +143,7 @@ def get_blocks(
         "Authorization": f"Bearer {token}",
         "Notion-Version": NOTION_VERSION,
     }
+    httpx = _httpx()
 
     blocks = []
     cursor = None
@@ -175,6 +185,7 @@ def append_raw_blocks(
         "Notion-Version": NOTION_VERSION,
         "Content-Type": "application/json",
     }
+    httpx = _httpx()
 
     # Strip server-only fields Notion rejects on write
     _STRIP = {"id", "created_time", "last_edited_time", "created_by",
@@ -202,6 +213,7 @@ def delete_blocks(
 ) -> None:
     """Delete a list of blocks by ID."""
     token = token or get_token()
+    httpx = _httpx()
     headers = {
         "Authorization": f"Bearer {token}",
         "Notion-Version": NOTION_VERSION,
@@ -240,6 +252,7 @@ def append_blocks(
         "Notion-Version": NOTION_VERSION,
         "Content-Type": "application/json",
     }
+    httpx = _httpx()
 
     blocks = _text_to_blocks(content)
     result = None

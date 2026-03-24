@@ -8,20 +8,25 @@ from pathlib import Path
 
 from .config import (
     SAMPLE_RATE, CHANNELS, PACKAGE_DIR, PROMPT_MINUTES, OUTPUT_DIR, LOG_DIR, ENV_FILE, CONFIG_DIR,
-    NOTION_URL, NOTION_MODE, AUTO_RECORD, BUFFER_MINUTES
+    NOTES_DESTINATION, NOTION_URL, NOTION_MODE, OBSIDIAN_VAULT, OBSIDIAN_FOLDER, AUTO_RECORD, BUFFER_MINUTES
 )
+from .filenames import sanitize_filename
 from .recorder import record, recover_partial
 from .transcriber import transcribe, check_fluidaudio
-from .processor import process_with_claude, find_claude, sanitize_filename, format_notes
+from .processor import process_with_claude, find_claude
+from .notes import save_meeting_notes
 
 
 # Valid config keys and their env var names
 CONFIG_KEYS = {
     "output_dir": "KUMBUKA_OUTPUT_DIR",
     "fluidaudio_repo": "KUMBUKA_FLUIDAUDIO_REPO",
+    "notes_destination": "KUMBUKA_NOTES_DESTINATION",
     "notion_url": "KUMBUKA_NOTION_URL",
     "notion_mode": "KUMBUKA_NOTION_MODE",
     "notion_token": "NOTION_TOKEN",
+    "obsidian_vault": "KUMBUKA_OBSIDIAN_VAULT",
+    "obsidian_folder": "KUMBUKA_OBSIDIAN_FOLDER",
     "max_recording_seconds": "KUMBUKA_MAX_RECORDING_SECONDS",
     "prompt_minutes": "KUMBUKA_PROMPT_MINUTES",
     "user_name": "KUMBUKA_USER_NAME",
@@ -101,17 +106,27 @@ def _rename_session_files(session: str, filename: str | None):
             print(f"📁 Renamed: {old.name} → {new.name}")
 
 
-def _save_to_notion(result: dict):
-    """Create a Notion page from structured output (token mode only)."""
-    if not NOTION_URL or NOTION_MODE != "token":
-        return
+def _save_notes(result: dict) -> tuple[str, str] | None:
+    """Persist meeting notes to the configured destination."""
+    saved = save_meeting_notes(
+        result,
+        destination=NOTES_DESTINATION,
+        notion_url=NOTION_URL,
+        notion_mode=NOTION_MODE,
+        obsidian_vault=OBSIDIAN_VAULT,
+        obsidian_folder=OBSIDIAN_FOLDER,
+    )
+    if not saved:
+        return None
 
-    from .notion import create_page
-
-    title = result.get("title", "Untitled Meeting")
-    content = format_notes(result)
-    page = create_page(NOTION_URL, title, content)
-    print(f"📝 Notion page: {page['url']}")
+    destination, location = saved
+    if destination == "notion" and location == "mcp-handled":
+        print("📝 Notion page handled via Claude MCP during processing")
+    elif destination == "notion":
+        print(f"📝 Notion page: {location}")
+    elif destination == "obsidian":
+        print(f"📝 Obsidian note: {location}")
+    return saved
 
 
 def do_record():
@@ -148,7 +163,7 @@ def do_record():
     if result:
         filename = sanitize_filename(result.get("filename", ""))
         _rename_session_files(session, filename)
-        _run_with_retry("Notion page creation", _save_to_notion, result)
+        _run_with_retry("notes export", _save_notes, result)
 
     print("\n✅ Done!")
 
@@ -187,7 +202,7 @@ def do_recover(session: Optional[str] = None):
     if result:
         filename = sanitize_filename(result.get("filename", ""))
         _rename_session_files(recovered_session, filename)
-        _run_with_retry("Notion page creation", _save_to_notion, result)
+        _run_with_retry("notes export", _save_notes, result)
 
     print("\n✅ Recovery complete!")
 
@@ -461,10 +476,12 @@ def do_record_only(duration: int):
         filename = sanitize_filename(result.get("filename", ""))
         _rename_session_files(session, filename)
         try:
-            _save_to_notion(result)
-            _auto_log(f"Saved to Notion: {result.get('title', 'untitled')}")
+            saved = _save_notes(result)
+            if saved:
+                destination, location = saved
+                _auto_log(f"Saved notes to {destination}: {location}")
         except Exception as e:
-            _auto_log(f"Notion save failed: {e}")
+            _auto_log(f"Notes export failed: {e}")
 
     _auto_log("Pipeline complete")
 

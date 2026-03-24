@@ -2,13 +2,14 @@
 
 import json
 import os
-import re
 import shutil
 import subprocess
 import sys
 from pathlib import Path
 
-from .config import PROMPTS_DIR, NOTION_URL, NOTION_MODE, USER_NAME
+from .config import PROMPTS_DIR, NOTES_DESTINATION, NOTION_URL, NOTION_MODE, USER_NAME
+from .filenames import sanitize_filename
+from .render import format_notes
 
 OUTPUT_SCHEMA = json.dumps({
     "type": "object",
@@ -92,15 +93,6 @@ def load_prompt(name: str = "meeting") -> str:
     if not prompt_file.exists():
         raise FileNotFoundError(f"Prompt not found: {prompt_file}")
     return prompt_file.read_text()
-
-
-def sanitize_filename(name: str) -> str | None:
-    """Sanitize a string into a safe filename."""
-    name = re.sub(r"[^a-z0-9-]", "-", name.lower())
-    name = re.sub(r"-+", "-", name).strip("-")
-    return name[:60] if name else None
-
-
 def _run_claude_structured(
     claude: str, prompt: str
 ) -> dict | None:
@@ -151,36 +143,6 @@ def _run_claude_structured(
     return structured_output
 
 
-def format_notes(result: dict) -> str:
-    """Format structured output as readable markdown for terminal display."""
-    sections = []
-
-    title = result.get("title", "Untitled Meeting")
-    sections.append(f"# {title}")
-
-    participants = result.get("participants", [])
-    if participants:
-        sections.append("## Participants")
-        sections.append("\n".join(f"- {p}" for p in participants))
-
-    summary = result.get("summary", "")
-    if summary:
-        sections.append("## Summary")
-        sections.append(summary)
-
-    feedback = result.get("feedback", "")
-    if feedback:
-        sections.append("## Communication Feedback")
-        sections.append(feedback)
-
-    transcript = result.get("transcript", "")
-    if transcript:
-        sections.append("## Transcript")
-        sections.append(transcript)
-
-    return "\n\n".join(sections)
-
-
 def process_with_claude(
     transcript: str,
     duration: str,
@@ -206,7 +168,7 @@ def process_with_claude(
 
     # MCP mode: append Notion instructions so Claude creates the page via MCP tools
     notion_instructions = ""
-    if NOTION_URL and NOTION_MODE == "mcp":
+    if NOTES_DESTINATION == "notion" and NOTION_URL and NOTION_MODE == "mcp":
         notion_instructions = f"""
 
 Also create a Notion subpage for this meeting:
