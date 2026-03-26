@@ -15,6 +15,7 @@ from .recorder import record, recover_partial
 from .transcriber import transcribe, check_fluidaudio
 from .processor import process_with_claude, find_claude
 from .notes import save_meeting_notes
+from . import recording_lock
 
 
 # Valid config keys and their env var names
@@ -134,11 +135,30 @@ def do_record():
     if not check_requirements():
         sys.exit(1)
 
-    # Record
-    wav, session = record()
-    if not wav or not session:
-        sys.exit(1)
-    assert session is not None  # narrowing for type checker
+    # Check for an active recording session
+    holder = recording_lock.acquire("manual")
+    if holder is not None:
+        if holder.mode == "auto":
+            meeting_info = f" ({holder.meeting})" if holder.meeting else ""
+            print(f"ℹ️  Auto-record is already capturing this meeting{meeting_info}")
+            print(f"   Started at {holder.started_at} (PID {holder.pid})")
+            print("   No need to record manually.")
+        else:
+            print(f"ℹ️  A manual recording is already in progress (PID {holder.pid})")
+            print(f"   Started at {holder.started_at}")
+        sys.exit(0)
+
+    try:
+        # Record
+        wav, session = record()
+        if not wav or not session:
+            sys.exit(1)
+        assert session is not None  # narrowing for type checker
+    finally:
+        recording_lock.release()
+
+    # Post-processing runs without the lock so back-to-back meetings
+    # can start recording while we transcribe/process.
 
     # Transcribe
     wav_path = OUTPUT_DIR / f"{session}.wav"
@@ -430,21 +450,36 @@ def _auto_log(msg: str):
         f.write(f"{datetime.now()}: {msg}\n")
 
 
-def do_record_only(duration: int):
+def do_record_only(duration: int, meeting: str = ""):
     """Record for a fixed duration, then transcribe and process non-interactively.
 
     Unlike do_record(), this never prompts for input — errors are logged and
     the pipeline continues best-effort.  Designed to run headless from the
     monitor daemon.
     """
-    _auto_log(f"Recording started (duration={duration}s)")
+    # Check for an active recording session
+    holder = recording_lock.acquire("auto", meeting=meeting)
+    if holder is not None:
+        if holder.mode == "manual":
+            _auto_log("Manual recording in progress — skipping auto-record")
+        else:
+            _auto_log(f"Auto-recording already active (PID {holder.pid}) — skipping")
+        return
 
-    wav, session = record(duration_secs=duration)
-    if not wav or not session:
-        _auto_log("Recording failed — no audio captured")
-        sys.exit(1)
-    assert session is not None
-    _auto_log(f"Recording saved: {session}")
+    try:
+        _auto_log(f"Recording started (duration={duration}s)")
+
+        wav, session = record(duration_secs=duration)
+        if not wav or not session:
+            _auto_log("Recording failed — no audio captured")
+            return
+        assert session is not None
+        _auto_log(f"Recording saved: {session}")
+    finally:
+        recording_lock.release()
+
+    # Post-processing runs without the lock so back-to-back meetings
+    # can start recording while we transcribe/process.
 
     # Transcribe
     wav_path = OUTPUT_DIR / f"{session}.wav"
@@ -577,17 +612,25 @@ def main():
             sys.exit(1)
     elif args[0] == "record-only":
         duration = None
-        for i, arg in enumerate(args[1:], 1):
-            if arg == "--duration" and i + 1 < len(args):
+        meeting = ""
+        i = 1
+        while i < len(args):
+            if args[i] == "--duration" and i + 1 < len(args):
                 try:
                     duration = int(args[i + 1])
                 except ValueError:
                     print(f"Invalid duration: {args[i + 1]}")
                     sys.exit(1)
+                i += 2
+            elif args[i] == "--meeting" and i + 1 < len(args):
+                meeting = args[i + 1]
+                i += 2
+            else:
+                i += 1
         if duration is None:
-            print("Usage: kumbuka record-only --duration SECONDS")
+            print("Usage: kumbuka record-only --duration SECONDS [--meeting TITLE]")
             sys.exit(1)
-        do_record_only(duration)
+        do_record_only(duration, meeting=meeting)
     else:
         print(f"Unknown command: {args[0]}")
         print_usage()

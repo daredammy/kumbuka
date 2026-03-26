@@ -106,6 +106,13 @@ end tell
 def start_auto_recording(event):
     """Start headless recording for meeting duration + buffer."""
     from datetime import timezone as tz
+    from kumbuka.recording_lock import get_active_recording
+
+    # Pre-check: skip spawning if a recording is already active
+    active = get_active_recording()
+    if active is not None:
+        log(f"Recording already active ({active.mode}, PID {active.pid}) — not starting for {event.title}")
+        return
 
     now = datetime.now(tz.utc)
     # Convert event.end to UTC-aware if needed
@@ -128,71 +135,102 @@ def start_auto_recording(event):
     auto_log.parent.mkdir(parents=True, exist_ok=True)
 
     log(f"Starting auto-record: {event.title} (duration={duration}s)")
-    log_fh = open(auto_log, "a")
-    subprocess.Popen(
-        [python_path, "-m", "kumbuka", "record-only", "--duration", str(duration)],
-        stdout=log_fh,
-        stderr=subprocess.STDOUT,
-        close_fds=True,
-    )
+    with open(auto_log, "a") as log_fh:
+        subprocess.Popen(
+            [python_path, "-m", "kumbuka", "record-only",
+             "--duration", str(duration), "--meeting", event.title],
+            stdout=log_fh,
+            stderr=subprocess.STDOUT,
+            close_fds=True,
+        )
+
+
+MAX_RETRIES = 2
+RETRY_DELAY_S = 5
 
 
 def check_calendar():
-    """Check calendar and auto-record or prompt if meeting found."""
-    try:
-        from kumbuka.calendar_scraper import get_upcoming_events, get_current_meetings
-        from kumbuka.meeting_filter import should_record
+    """Check calendar and auto-record or prompt if meeting found.
 
-        prompted = load_prompted()
+    Retries up to MAX_RETRIES times on transient failures (Chrome unresponsive,
+    AppleScript timeouts after wake-from-sleep, etc.).
+    """
+    last_error = None
+    for attempt in range(1 + MAX_RETRIES):
+        try:
+            return _check_calendar_once()
+        except Exception as e:
+            last_error = e
+            if attempt < MAX_RETRIES:
+                import time as _time
+                log(f"Calendar check failed (attempt {attempt + 1}): {e} — retrying in {RETRY_DELAY_S}s")
+                _time.sleep(RETRY_DELAY_S)
 
-        # Deduplicate: same event can appear in both upcoming and current lists
-        # with different IDs if the textContent varies between scrapes.
-        all_events = get_upcoming_events(PROMPT_MINUTES) + get_current_meetings()
-        seen_titles = set()
-        events = []
-        for e in all_events:
-            key = (e.title, e.start.strftime("%Y-%m-%d %H:%M"))
-            if key not in seen_titles:
-                seen_titles.add(key)
-                events.append(e)
+    log(f"Calendar check failed after {1 + MAX_RETRIES} attempts: {last_error}")
+    return False
 
-        for event in events:
-            if event.id in prompted:
-                continue
 
-            if not should_record(event):
-                log(f"Skipping: {event.title}")
-                prompted.add(event.id)
-                save_prompted(prompted)
-                continue
+def _check_calendar_once():
+    """Single attempt to check the calendar and act on events."""
+    from kumbuka.calendar_scraper import get_upcoming_events, get_current_meetings
+    from kumbuka.meeting_filter import should_record
 
+    prompted = load_prompted()
+
+    # Deduplicate: same event can appear in both upcoming and current lists
+    # with different IDs if the textContent varies between scrapes.
+    all_events = get_upcoming_events(PROMPT_MINUTES) + get_current_meetings()
+    seen_titles = set()
+    events = []
+    for e in all_events:
+        key = (e.title, e.start.strftime("%Y-%m-%d %H:%M"))
+        if key not in seen_titles:
+            seen_titles.add(key)
+            events.append(e)
+
+    for event in events:
+        if event.id in prompted:
+            continue
+
+        if not should_record(event):
+            log(f"Skipping: {event.title}")
             prompted.add(event.id)
             save_prompted(prompted)
+            continue
 
-            if AUTO_RECORD:
-                log(f"Auto-recording: {event.title}")
-                start_auto_recording(event)
-            else:
-                log(f"Meeting detected: {event.title}")
-                if show_record_dialog(f"{event.title} (starting soon)"):
-                    start_recording_in_terminal()
+        prompted.add(event.id)
+        save_prompted(prompted)
 
-        event_count = len(events)
-        if event_count > 0:
-            log(f"Checked - {event_count} events, all already prompted or skipped")
+        if AUTO_RECORD:
+            log(f"Auto-recording: {event.title}")
+            start_auto_recording(event)
         else:
-            log("Checked - no meetings")
+            log(f"Meeting detected: {event.title}")
+            if show_record_dialog(f"{event.title} (starting soon)"):
+                start_recording_in_terminal()
 
-        return False
+    event_count = len(events)
+    if event_count > 0:
+        log(f"Checked - {event_count} events, all already prompted or skipped")
+    else:
+        log("Checked - no meetings")
 
-    except Exception as e:
-        log(f"Calendar check error: {e}")
-        return False
+    return False
 
 
 def main():
-    """Entry point for daemon."""
-    check_calendar()
+    """Entry point for daemon.
+
+    Always exits 0 so launchd doesn't throttle the job due to repeated
+    non-zero exit codes.  All errors are captured in the monitor log.
+    """
+    try:
+        check_calendar()
+    except Exception as e:
+        try:
+            log(f"Unhandled error in monitor: {e}")
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":
