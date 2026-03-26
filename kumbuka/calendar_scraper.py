@@ -186,7 +186,11 @@ def _tab_exists(window_id: int, tab_index: int) -> bool:
 
 
 def _find_calendar_tab() -> tuple[int, int] | None:
-    """Search all Chrome windows/tabs for one on calendar.google.com."""
+    """Search all Chrome windows/tabs for one on calendar.google.com.
+
+    Prefers a tab already at CALENDAR_URL (the correct view) over any other
+    calendar tab.  Returns the best match.
+    """
     try:
         win_ids_raw = _run_applescript(
             'tell application "Google Chrome" to return id of every window'
@@ -194,6 +198,7 @@ def _find_calendar_tab() -> tuple[int, int] | None:
         if not win_ids_raw:
             return None
 
+        best: tuple[int, int] | None = None
         for win_id_str in win_ids_raw.split(", "):
             win_id_str = win_id_str.strip()
             if not win_id_str:
@@ -209,11 +214,14 @@ def _find_calendar_tab() -> tuple[int, int] | None:
             )
             urls = [u.strip() for u in urls_raw.split(", ")]
             for idx, url in enumerate(urls, 1):
-                if f"https://{CALENDAR_ORIGIN}" in url:
-                    return (win_id, idx)
+                if CALENDAR_URL in url:
+                    return (win_id, idx)  # exact match — use immediately
+                if f"https://{CALENDAR_ORIGIN}" in url and best is None:
+                    best = (win_id, idx)
+
+        return best
     except (subprocess.CalledProcessError, ValueError):
         return None
-    return None
 
 
 def _wait_for_tab_load(window_id: int, tab_index: int) -> bool:
