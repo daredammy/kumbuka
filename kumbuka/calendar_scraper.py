@@ -687,16 +687,11 @@ _DATEKEY_PREFIX = "DATEKEY:"
 _DATEKEY_SEP = "|||"
 
 
-def _extract_events() -> list[CalendarEvent]:
-    """Open/find the calendar tab, scrape, and parse all events."""
-    ref = ensure_kumbuka_calendar_tab()
-    if ref is None:
-        return []
+_CONFIRM_DELAY_S = 1.5
 
-    window_id, tab_index = ref
-    _refresh_calendar_tab(window_id, tab_index)
-    raw_labels = _scrape_aria_labels(window_id, tab_index)
 
+def _parse_raw_labels(raw_labels: list[str]) -> list[CalendarEvent]:
+    """Parse a list of raw aria-label strings into CalendarEvents."""
     events: list[CalendarEvent] = []
     for raw in raw_labels:
         datekey: str | None = None
@@ -714,6 +709,34 @@ def _extract_events() -> list[CalendarEvent]:
         else:
             log.debug("Could not parse aria label: %s", label)
     return events
+
+
+def _extract_events() -> list[CalendarEvent]:
+    """Open/find the calendar tab, scrape, and parse all events.
+
+    Performs a confirmation scrape: scrapes twice with a short delay and
+    only returns events present in both scrapes.  This filters transient
+    DOM artifacts (phantom events from Google Calendar's rendering pipeline).
+    """
+    ref = ensure_kumbuka_calendar_tab()
+    if ref is None:
+        return []
+
+    window_id, tab_index = ref
+    _refresh_calendar_tab(window_id, tab_index)
+
+    first_labels = _scrape_aria_labels(window_id, tab_index)
+    time.sleep(_CONFIRM_DELAY_S)
+    second_labels = _scrape_aria_labels(window_id, tab_index)
+
+    # Keep only labels present in both scrapes
+    confirmed = set(first_labels) & set(second_labels)
+    if len(confirmed) < len(first_labels):
+        dropped = set(first_labels) - confirmed
+        for d in dropped:
+            log.warning("Dropped transient event chip: %s", d[:80])
+
+    return _parse_raw_labels([l for l in first_labels if l in confirmed])
 
 
 # ---------------------------------------------------------------------------

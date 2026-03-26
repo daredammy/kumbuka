@@ -66,7 +66,8 @@ class TestStartAutoRecording:
 
     @patch("kumbuka.daemon.monitor.subprocess.Popen")
     @patch("kumbuka.daemon.monitor.find_python", return_value="/usr/bin/python3")
-    def test_calculates_duration(self, mock_python, mock_popen, tmp_path, monkeypatch):
+    @patch("kumbuka.recording_lock.get_active_recording", return_value=None)
+    def test_calculates_duration(self, mock_lock, mock_python, mock_popen, tmp_path, monkeypatch):
         monkeypatch.setattr("kumbuka.daemon.monitor.OUTPUT_DIR", tmp_path)
         monkeypatch.setattr("kumbuka.daemon.monitor.BUFFER_MINUTES", 10)
 
@@ -84,7 +85,8 @@ class TestStartAutoRecording:
 
     @patch("kumbuka.daemon.monitor.subprocess.Popen")
     @patch("kumbuka.daemon.monitor.find_python", return_value="/usr/bin/python3")
-    def test_minimum_5_minutes(self, mock_python, mock_popen, tmp_path, monkeypatch):
+    @patch("kumbuka.recording_lock.get_active_recording", return_value=None)
+    def test_minimum_5_minutes(self, mock_lock, mock_python, mock_popen, tmp_path, monkeypatch):
         monkeypatch.setattr("kumbuka.daemon.monitor.OUTPUT_DIR", tmp_path)
         monkeypatch.setattr("kumbuka.daemon.monitor.BUFFER_MINUTES", 0)
 

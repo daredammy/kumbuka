@@ -7,6 +7,7 @@ Detects meetings via Calendar scraper and auto-records or prompts to record.
 
 import subprocess
 import json
+import sys
 from datetime import datetime
 
 from kumbuka.config import OUTPUT_DIR, LOG_DIR, PROMPT_MINUTES, AUTO_RECORD, BUFFER_MINUTES
@@ -235,3 +236,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    sys.exit(0)
