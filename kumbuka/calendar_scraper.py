@@ -264,7 +264,7 @@ def ensure_kumbuka_calendar_tab() -> tuple[int, int] | None:
 
     # Create a new tab in the front window (or a new window if none exist).
     try:
-        cal_url = f"https://{CALENDAR_ORIGIN}"
+        cal_url = CALENDAR_URL
         raw = _run_applescript(
             'tell application "Google Chrome"\n'
             f'    set newTab to make new tab at end of tabs of front window '
@@ -294,6 +294,8 @@ def ensure_kumbuka_calendar_tab() -> tuple[int, int] | None:
 
     _wait_for_tab_load(win_id, tab_idx)
     _tab_ref = (win_id, tab_idx)
+    global _last_refresh  # noqa: PLW0603
+    _last_refresh = time.monotonic()  # fresh tab at CALENDAR_URL — no need to refresh again
     log.debug("Created new calendar tab: window %d, tab %d", win_id, tab_idx)
     return _tab_ref
 
@@ -302,11 +304,35 @@ def ensure_kumbuka_calendar_tab() -> tuple[int, int] | None:
 # View & scrape helpers
 # ---------------------------------------------------------------------------
 
-def _ensure_schedule_view(window_id: int, tab_index: int) -> None:
-    """No-op: event chips exist on all Calendar views, so no navigation needed.
+_last_refresh: float = 0.0
+_REFRESH_INTERVAL_S = 55  # refresh at most once per minute
 
-    Keeping this as a hook in case a specific view is ever required.
+
+def _refresh_calendar_tab(window_id: int, tab_index: int) -> None:
+    """Navigate the calendar tab to today's view to flush stale DOM content.
+
+    Google Calendar doesn't always auto-refresh a background tab, so event
+    chips from a previous render can linger.  Navigating to the canonical
+    URL forces a fresh render.  Skips the refresh if one happened within
+    the last _REFRESH_INTERVAL_S seconds.
     """
+    global _last_refresh  # noqa: PLW0603
+
+    now = time.monotonic()
+    if now - _last_refresh < _REFRESH_INTERVAL_S:
+        return
+
+    try:
+        _run_js_in_tab(f'window.location.href = "{CALENDAR_URL}"', window_id, tab_index)
+    except subprocess.CalledProcessError:
+        log.warning("Calendar tab refresh failed; will scrape existing DOM")
+        return
+    if not _wait_for_tab_load(window_id, tab_index):
+        log.warning("Calendar tab load timed out after refresh")
+        return  # don't stamp _last_refresh — retry next call
+    # Give Calendar's JS a moment to render event chips after page load.
+    time.sleep(2)
+    _last_refresh = time.monotonic()
 
 
 def _scrape_aria_labels(window_id: int, tab_index: int) -> list[str]:
@@ -668,7 +694,7 @@ def _extract_events() -> list[CalendarEvent]:
         return []
 
     window_id, tab_index = ref
-    _ensure_schedule_view(window_id, tab_index)
+    _refresh_calendar_tab(window_id, tab_index)
     raw_labels = _scrape_aria_labels(window_id, tab_index)
 
     events: list[CalendarEvent] = []
