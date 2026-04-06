@@ -17,13 +17,18 @@ try:
 except ModuleNotFoundError:  # pragma: no cover - optional fallback for minimal test envs
     sd = None
 
-from .config import SAMPLE_RATE, CHANNELS, MAX_DURATION, OUTPUT_DIR
+from .config import SAMPLE_RATE, CHANNELS, MAX_DURATION, OUTPUT_DIR, AUDIO_DEVICE
+from .audio_devices import resolve_recording_config
 
 
-# Module state
+# Module state — primary stream (mic or single device)
 _stop_event = threading.Event()
 _chunks = []
 _chunks_lock = threading.Lock()
+
+# Module state — secondary stream (system audio via BlackHole)
+_chunks_secondary = []
+_chunks_secondary_lock = threading.Lock()
 
 # Incremental save settings
 SAVE_INTERVAL_SECS = 10  # Save to disk every 10 seconds
@@ -72,6 +77,81 @@ def _on_signal(_sig, _frame):
     _stop_event.set()
 
 
+def _to_mono(indata):
+    """Downmix multi-channel audio to mono int16."""
+    if indata.shape[1] == 1:
+        return indata.copy()
+    # Average channels, keeping int16 range
+    return indata.astype(np.int32).mean(axis=1, keepdims=True).astype(np.int16)
+
+
+def _normalize(audio):
+    """Normalize audio to use ~70% of int16 range. Returns float64."""
+    peak = np.abs(audio).max()
+    if peak == 0:
+        return audio.astype(np.float64)
+    # Target 70% of max range — leaves headroom for mixing
+    target = 32767 * 0.7
+    return audio.astype(np.float64) * (target / peak)
+
+
+def _mix_streams(primary_chunks: list, secondary_chunks: list) -> list:
+    """Mix two mono audio streams with per-stream normalization.
+
+    Each stream is normalized independently before mixing so both
+    sides (mic and system audio) contribute equally regardless of
+    their raw volume levels. Handles clock drift between devices.
+    """
+    primary = np.concatenate(primary_chunks) if primary_chunks else np.array([], dtype=np.int16).reshape(0, 1)
+    secondary = np.concatenate(secondary_chunks) if secondary_chunks else np.array([], dtype=np.int16).reshape(0, 1)
+
+    if primary.size == 0:
+        return [secondary] if secondary.size > 0 else []
+    if secondary.size == 0:
+        return [primary]
+
+    # Pad shorter stream to match longer (clock drift compensation)
+    max_len = max(len(primary), len(secondary))
+    if len(primary) < max_len:
+        primary = np.pad(primary, ((0, max_len - len(primary)), (0, 0)))
+    if len(secondary) < max_len:
+        secondary = np.pad(secondary, ((0, max_len - len(secondary)), (0, 0)))
+
+    # Normalize each stream independently, then mix
+    p_norm = _normalize(primary)
+    s_norm = _normalize(secondary)
+
+    # If secondary is silent (e.g. BlackHole not receiving audio),
+    # return primary at full level instead of halving it
+    secondary_silent = np.abs(secondary).max() == 0
+    primary_silent = np.abs(primary).max() == 0
+
+    if secondary_silent:
+        mixed = p_norm
+    elif primary_silent:
+        mixed = s_norm
+    else:
+        mixed = (p_norm + s_norm) / 2.0
+
+    mixed = np.clip(mixed, -32768, 32767).astype(np.int16)
+    return [mixed]
+
+
+def _get_mixed_chunks() -> list:
+    """Get current audio chunks, mixing dual streams if active."""
+    with _chunks_lock:
+        primary = _chunks.copy()
+    with _chunks_secondary_lock:
+        secondary = _chunks_secondary.copy()
+
+    if not secondary:
+        # Single-stream mode or no secondary audio yet
+        return primary
+
+    # Downmix each set to mono first, then mix together
+    return _mix_streams(primary, secondary)
+
+
 def _chunks_to_wav(chunks: list) -> bytes:
     """Convert audio chunks to WAV bytes."""
     _require_audio_deps()
@@ -94,11 +174,11 @@ def _save_incremental(session: str, final: bool = False):
     """Save current audio to disk incrementally.
 
     Uses a .partial extension while recording, renamed on final save.
+    In dual-stream mode, mixes both streams before saving.
     """
-    with _chunks_lock:
-        if not _chunks:
-            return
-        chunks_copy = _chunks.copy()
+    chunks_copy = _get_mixed_chunks()
+    if not chunks_copy:
+        return
 
     wav_bytes = _chunks_to_wav(chunks_copy)
     if not wav_bytes:
@@ -166,7 +246,10 @@ def recover_partial(session: str | None = None) -> tuple[bytes | None, str | Non
 
 def record(duration_secs: int | None = None) -> tuple[bytes | None, str | None]:
     """
-    Record audio from microphone until Ctrl+C or max duration.
+    Record audio until Ctrl+C or max duration.
+
+    In auto mode, captures from both microphone and system audio (via BlackHole)
+    when available. Falls back to mic-only if BlackHole is not installed.
 
     Audio is saved incrementally to disk every few seconds, so even if
     the process is killed, you won't lose more than a few seconds of audio.
@@ -178,12 +261,21 @@ def record(duration_secs: int | None = None) -> tuple[bytes | None, str | None]:
     Returns:
         tuple: (wav_bytes, session_id) or (None, None) if no audio
     """
-    global _chunks  # pylint: disable=global-statement
+    global _chunks, _chunks_secondary  # pylint: disable=global-statement
     _require_audio_deps()
+
+    # Resolve audio device configuration
+    try:
+        rec_config = resolve_recording_config(AUDIO_DEVICE)
+    except RuntimeError as e:
+        print(f"❌ Audio device error: {e}")
+        return None, None
 
     _stop_event.clear()
     with _chunks_lock:
         _chunks = []
+    with _chunks_secondary_lock:
+        _chunks_secondary = []
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     session = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
@@ -191,10 +283,17 @@ def record(duration_secs: int | None = None) -> tuple[bytes | None, str | None]:
     # Set up signal handler
     old_handler = signal.signal(signal.SIGINT, _on_signal)
 
-    def callback(indata, _frames, _time_info, _status):
+    def callback_primary(indata, _frames, _time_info, _status):
         if not _stop_event.is_set():
+            mono = _to_mono(indata) if indata.shape[1] > 1 else indata.copy()
             with _chunks_lock:
-                _chunks.append(indata.copy())
+                _chunks.append(mono)
+
+    def callback_secondary(indata, _frames, _time_info, _status):
+        if not _stop_event.is_set():
+            mono = _to_mono(indata) if indata.shape[1] > 1 else indata.copy()
+            with _chunks_secondary_lock:
+                _chunks_secondary.append(mono)
 
     effective_max = min(duration_secs, MAX_DURATION) if duration_secs else MAX_DURATION
 
@@ -202,48 +301,71 @@ def record(duration_secs: int | None = None) -> tuple[bytes | None, str | None]:
     if duration_secs:
         dm, ds = divmod(effective_max, 60)
         print(f"\n🎙️  RECORDING STARTED ({dm}m {ds}s)")
-        print("   Press Ctrl+C to stop early\n")
+        print("   Press Ctrl+C to stop early")
     else:
         print("\n🎙️  RECORDING STARTED")
-        print("   Press Ctrl+C to stop\n")
+        print("   Press Ctrl+C to stop")
+    print(f"   Audio: {rec_config.description}\n")
 
     last_save_time = time.time()
 
-    try:
-        with sd.InputStream(
-            samplerate=SAMPLE_RATE,
-            channels=CHANNELS,
-            dtype=np.int16,
-            callback=callback
-        ):
-            start = datetime.now()
-            while not _stop_event.is_set():
-                # Use time.sleep instead of sd.sleep - responds to signals on macOS
-                time.sleep(0.1)
+    def _recording_loop(effective_max, duration_secs, session):
+        """Main recording loop shared by single and dual-stream modes."""
+        nonlocal last_save_time
+        start = datetime.now()
+        while not _stop_event.is_set():
+            time.sleep(0.1)
 
-                elapsed = (datetime.now() - start).seconds
+            elapsed = (datetime.now() - start).seconds
 
-                # Incremental save every SAVE_INTERVAL_SECS
-                if time.time() - last_save_time >= SAVE_INTERVAL_SECS:
-                    _save_incremental(session)
-                    last_save_time = time.time()
+            # Incremental save every SAVE_INTERVAL_SECS
+            if time.time() - last_save_time >= SAVE_INTERVAL_SECS:
+                _save_incremental(session)
+                last_save_time = time.time()
 
-                if elapsed >= effective_max:
-                    if duration_secs:
-                        print("\r   ⏱️  Duration reached              ")
-                    else:
-                        print("\r   ⏱️  Max duration reached        ")
-                    break
-
+            if elapsed >= effective_max:
                 if duration_secs:
-                    remaining = max(0, effective_max - elapsed)
-                    rm, rs = divmod(remaining, 60)
-                    dot = "🔴" if int(time.time() * 2) % 2 == 0 else "⚫"
-                    print(f"\r   {dot} Recording: {rm:02d}:{rs:02d} remaining", end="", flush=True)
+                    print("\r   ⏱️  Duration reached              ")
                 else:
-                    m, s = divmod(elapsed, 60)
-                    dot = "🔴" if int(time.time() * 2) % 2 == 0 else "⚫"
-                    print(f"\r   {dot} {m:02d}:{s:02d}", end="", flush=True)
+                    print("\r   ⏱️  Max duration reached        ")
+                break
+
+            if duration_secs:
+                remaining = max(0, effective_max - elapsed)
+                rm, rs = divmod(remaining, 60)
+                dot = "🔴" if int(time.time() * 2) % 2 == 0 else "⚫"
+                print(f"\r   {dot} Recording: {rm:02d}:{rs:02d} remaining", end="", flush=True)
+            else:
+                m, s = divmod(elapsed, 60)
+                dot = "🔴" if int(time.time() * 2) % 2 == 0 else "⚫"
+                print(f"\r   {dot} {m:02d}:{s:02d}", end="", flush=True)
+
+    try:
+        if rec_config.mode == "dual":
+            with sd.InputStream(
+                samplerate=SAMPLE_RATE,
+                channels=rec_config.primary_channels,
+                device=rec_config.primary_device,
+                dtype=np.int16,
+                callback=callback_primary,
+            ):
+                with sd.InputStream(
+                    samplerate=SAMPLE_RATE,
+                    channels=rec_config.secondary_channels,
+                    device=rec_config.secondary_device,
+                    dtype=np.int16,
+                    callback=callback_secondary,
+                ):
+                    _recording_loop(effective_max, duration_secs, session)
+        else:
+            with sd.InputStream(
+                samplerate=SAMPLE_RATE,
+                channels=rec_config.primary_channels,
+                device=rec_config.primary_device,
+                dtype=np.int16,
+                callback=callback_primary,
+            ):
+                _recording_loop(effective_max, duration_secs, session)
 
     finally:
         # Restore old signal handler
@@ -252,16 +374,16 @@ def record(duration_secs: int | None = None) -> tuple[bytes | None, str | None]:
     play_stop_tone()
     print("\r   🛑 Recording stopped             ")
 
-    with _chunks_lock:
-        if not _chunks:
-            print("❌ No audio recorded")
-            # Clean up any partial file
-            partial = OUTPUT_DIR / f"{session}.partial.wav"
-            if partial.exists():
-                partial.unlink()
-            return None, None
+    # Get final mixed audio
+    chunks_copy = _get_mixed_chunks()
 
-        chunks_copy = _chunks.copy()
+    if not chunks_copy:
+        print("❌ No audio recorded")
+        # Clean up any partial file
+        partial = OUTPUT_DIR / f"{session}.partial.wav"
+        if partial.exists():
+            partial.unlink()
+        return None, None
 
     # Final save
     wav = _chunks_to_wav(chunks_copy)

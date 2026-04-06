@@ -3,13 +3,16 @@
 from typing import Optional
 import sys
 import subprocess
+import time
 from datetime import datetime
 from pathlib import Path
 
 from .config import (
     SAMPLE_RATE, CHANNELS, PACKAGE_DIR, PROMPT_MINUTES, OUTPUT_DIR, LOG_DIR, ENV_FILE, CONFIG_DIR,
-    NOTES_DESTINATION, NOTION_URL, NOTION_MODE, OBSIDIAN_VAULT, OBSIDIAN_FOLDER, AUTO_RECORD, BUFFER_MINUTES
+    NOTES_DESTINATION, NOTION_URL, NOTION_MODE, OBSIDIAN_VAULT, OBSIDIAN_FOLDER, AUTO_RECORD, BUFFER_MINUTES,
+    AUDIO_DEVICE,
 )
+from .audio_devices import resolve_recording_config, find_blackhole, query_input_devices
 from .filenames import sanitize_filename
 from .recorder import record, recover_partial
 from .transcriber import transcribe, check_fluidaudio
@@ -34,6 +37,7 @@ CONFIG_KEYS = {
     "auto_record": "KUMBUKA_AUTO_RECORD",
     "buffer_minutes": "KUMBUKA_BUFFER_MINUTES",
     "log_dir": "KUMBUKA_LOG_DIR",
+    "audio_device": "KUMBUKA_AUDIO_DEVICE",
 }
 
 
@@ -521,6 +525,126 @@ def do_record_only(duration: int, meeting: str = ""):
     _auto_log("Pipeline complete")
 
 
+def audio_status():
+    """Show current audio device configuration."""
+    try:
+        config = resolve_recording_config(AUDIO_DEVICE)
+    except RuntimeError as e:
+        print(f"❌ {e}")
+        sys.exit(1)
+
+    print("Audio Configuration:")
+    print(f"  Mode:   {config.mode}-stream")
+    print(f"  Source: {config.description}")
+    print(f"  Output: mono {SAMPLE_RATE // 1000}kHz")
+    print(f"  Setting: KUMBUKA_AUDIO_DEVICE={AUDIO_DEVICE}")
+
+    bh = find_blackhole()
+    print()
+    if bh:
+        print(f"  BlackHole: installed ({bh['name']}, device {bh['index']})")
+        if config.mode == "dual":
+            print("  Status: recording mic + system audio")
+        else:
+            print("  Status: detected but not used (check KUMBUKA_AUDIO_DEVICE setting)")
+    else:
+        print("  BlackHole: not installed")
+        print("  Install with: brew install blackhole-2ch")
+        print("  Then run: kumbuka audio setup")
+
+
+def audio_list_devices():
+    """List all input-capable audio devices."""
+    devices = query_input_devices()
+    bh = find_blackhole()
+    bh_idx = bh["index"] if bh else None
+
+    import sounddevice as _sd
+    default_idx = _sd.default.device[0]
+
+    print("Input devices:\n")
+    for d in devices:
+        markers = []
+        if d["index"] == default_idx:
+            markers.append("default")
+        if d["index"] == bh_idx:
+            markers.append("blackhole")
+        suffix = f"  ({', '.join(markers)})" if markers else ""
+        print(f"  [{d['index']:2d}] {d['name']} ({d['max_input_channels']}ch){suffix}")
+    print()
+    print(f"Current setting: KUMBUKA_AUDIO_DEVICE={AUDIO_DEVICE}")
+
+
+def audio_setup():
+    """Guided BlackHole setup for system audio capture."""
+    bh = find_blackhole()
+    if not bh:
+        print("Step 1: Install BlackHole\n")
+        print("  brew install blackhole-2ch\n")
+        print("Then re-run: kumbuka audio setup")
+        return
+
+    print(f"BlackHole detected: {bh['name']} (device {bh['index']})\n")
+    print("Step 1: Create a Multi-Output Device\n")
+    print("  1. Open Audio MIDI Setup (Spotlight: 'Audio MIDI Setup')")
+    print("  2. Click '+' at bottom-left -> Create Multi-Output Device")
+    print("  3. Check BOTH:")
+    print(f"     - Your speakers/headphones (e.g. MacBook Pro Speakers)")
+    print(f"     - {bh['name']}")
+    print("  4. Right-click it -> 'Use This Device For Sound Output'\n")
+    print("Step 2: Verify\n")
+    print("  kumbuka audio test\n")
+    print("This routes system audio to both your ears AND BlackHole,")
+    print("so Kumbuka can capture what meeting participants say.")
+
+
+def audio_test():
+    """Record 3 seconds and report audio levels."""
+    import sounddevice as _sd
+
+    try:
+        config = resolve_recording_config(AUDIO_DEVICE)
+    except RuntimeError as e:
+        print(f"❌ {e}")
+        sys.exit(1)
+
+    print(f"Testing: {config.description}")
+    print("Recording 3 seconds...\n")
+
+    def _test_device(device, channels, label):
+        """Record briefly and report peak level."""
+        import numpy as _np
+        frames = []
+
+        def cb(indata, _f, _t, _s):
+            frames.append(indata.copy())
+
+        with _sd.InputStream(samplerate=SAMPLE_RATE, channels=channels,
+                             device=device, dtype=_np.int16, callback=cb):
+            time.sleep(3)
+
+        if not frames:
+            print(f"  {label}: no data captured")
+            return
+
+        audio = _np.concatenate(frames)
+        peak = _np.abs(audio).max()
+        if peak == 0:
+            print(f"  {label}: silence (peak: 0) -- no audio reaching this device")
+        else:
+            db = 20 * _np.log10(peak / 32767)
+            print(f"  {label}: detected audio (peak: {db:.0f} dB)")
+
+    _test_device(config.primary_device, config.primary_channels,
+                 "Mic" if config.mode == "dual" else "Input")
+
+    if config.mode == "dual":
+        _test_device(config.secondary_device, config.secondary_channels, "System")
+        print()
+        print("If 'System' shows silence, your Multi-Output Device may not be set")
+        print("as the system output. Run: kumbuka audio setup")
+
+
 def print_usage():
     """Print usage information."""
     print("""
@@ -546,6 +670,12 @@ Monitor:
   kumbuka monitor disable     Turn off auto-recording
   kumbuka monitor status      Check if monitor is running
   kumbuka help                Show this message
+
+Audio:
+  kumbuka audio               Show audio device configuration
+  kumbuka audio devices        List available input devices
+  kumbuka audio setup          Guided BlackHole setup for system audio
+  kumbuka audio test           Test audio capture (3 second recording)
 
 Audio is saved incrementally, so interrupted recordings can be recovered.
 """)
@@ -578,6 +708,18 @@ def main():
             calendar_test()
         else:
             print(f"Unknown calendar command: {cmd}")
+            sys.exit(1)
+    elif args[0] == "audio":
+        if len(args) < 2:
+            audio_status()
+        elif args[1] == "devices":
+            audio_list_devices()
+        elif args[1] == "setup":
+            audio_setup()
+        elif args[1] == "test":
+            audio_test()
+        else:
+            print(f"Unknown audio command: {args[1]}")
             sys.exit(1)
     elif args[0] == "config":
         if len(args) < 2:

@@ -75,6 +75,9 @@ MAX_DURATION = int(os.getenv("KUMBUKA_MAX_RECORDING_SECONDS", "7200"))  # 2 hour
 SAMPLE_RATE = 16000
 CHANNELS = 1
 
+# Audio device: "auto" (detect BlackHole), "mic", "system", or a device name/index
+AUDIO_DEVICE = os.getenv("KUMBUKA_AUDIO_DEVICE", "auto")
+
 # Calendar monitoring - minutes before meeting to prompt
 PROMPT_MINUTES = int(os.getenv("KUMBUKA_PROMPT_MINUTES", "2"))
 
